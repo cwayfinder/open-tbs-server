@@ -24,8 +24,9 @@ def do_start_battle(battle_map, preferences):
     players = {}
     for player_id, map_data in battle_map['players'].items():
         pref = preferences['players'][player_id]
-        commander = Commander(character=pref['commanderCharacter'], death_count=0, xp=0, level=0,
-                              unit=units[map_data['commander']['unitId']])
+        commander_unit = units[map_data['commander']['unitId']]
+        commander_unit.type = pref['commanderCharacter']
+        commander = Commander(character=pref['commanderCharacter'], death_count=0, xp=0, level=0, unit=commander_unit)
         player = Player(color=pref['color'],
                         team=pref['team'],
                         money=preferences['money'],
@@ -35,7 +36,6 @@ def do_start_battle(battle_map, preferences):
         players[map_data['id']] = player
 
     for u in battle_map['units'].values():
-        print(u['ownerId'], type(u['ownerId']), players.keys(), u['ownerId'] in players)
         units[u['id']].owner = players[u['ownerId']]
 
     db_session.add_all(players.values())
