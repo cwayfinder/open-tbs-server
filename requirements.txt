@@ -4,12 +4,34 @@
 #
 #    pip-compile --output-file requirements.txt requirements.in
 #
+cachecontrol==0.12.4      # via firebase-admin
+cachetools==2.0.1         # via google-auth
+certifi==2018.1.18        # via requests
+chardet==3.0.4            # via requests
 click==6.7                # via flask
+firebase-admin==2.10.0
 flask-cors==3.0.3
 flask==0.12.2
+google-api-core[grpc]==1.1.0  # via google-cloud-core, google-cloud-firestore, google-cloud-storage
+google-auth==1.4.1        # via firebase-admin, google-api-core
+google-cloud-core==0.28.1  # via google-cloud-firestore, google-cloud-storage
+google-cloud-firestore==0.29.0  # via firebase-admin
+google-cloud-storage==1.8.0  # via firebase-admin
+google-resumable-media==0.3.1  # via google-cloud-storage
+googleapis-common-protos==1.5.3  # via google-api-core
+grpcio==1.10.1            # via google-api-core
+idna==2.6                 # via requests
 itsdangerous==0.24        # via flask
 jinja2==2.10              # via flask
 markupsafe==1.0           # via jinja2
-six==1.11.0               # via flask-cors
+msgpack-python==0.5.6     # via cachecontrol
+protobuf==3.5.2.post1     # via google-api-core, googleapis-common-protos, grpcio
+pyasn1-modules==0.2.1     # via google-auth
+pyasn1==0.4.2             # via pyasn1-modules, rsa
+pytz==2018.4              # via google-api-core
+requests==2.18.4          # via cachecontrol, firebase-admin, google-api-core
+rsa==3.4.2                # via google-auth
+six==1.11.0               # via firebase-admin, flask-cors, google-api-core, google-auth, google-resumable-media, grpcio, protobuf
 sqlalchemy==1.2.6
+urllib3==1.22             # via requests
 werkzeug==0.14.1          # via flask
