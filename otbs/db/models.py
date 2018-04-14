@@ -1,8 +1,7 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, select, func
-from sqlalchemy.orm import object_session, composite, relationship, column_property
-from sqlalchemy.orm.collections import attribute_mapped_collection
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, select, func, or_
+from sqlalchemy.orm import object_session, composite, relationship
 
-from db_constants import Base
+from otbs.db.db_constants import Base
 
 
 class Cell(object):
@@ -23,6 +22,9 @@ class Cell(object):
 
     def __ne__(self, other):
         return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash((self.x, self.y))
 
 
 # class MapObject(AbstractConcreteBase, Base):
@@ -48,6 +50,7 @@ class Player(Base):
     buildings = relationship("Building", back_populates="owner", lazy="dynamic")
     units = relationship("Unit", back_populates="owner", lazy="dynamic")
     wisp_aura_cells = relationship("WispAuraCell", lazy="dynamic")
+    battle = relationship("Battle", back_populates="players", foreign_keys=[battle_id])
 
     # unit_count = column_property(
     #     select([func.count(Unit.id)]).where(Unit.owner_id == id).correlate_except(Unit)
@@ -58,6 +61,32 @@ class Player(Base):
         return object_session(self).scalar(
             select([func.count(Unit.id)]).where(Unit.owner_id == self.id)
         )
+
+    @property
+    def enemy_buildings(self):
+        return object_session(self)\
+            .query(Building)\
+            .select_from(Player)\
+            .filter(Player.team != self.team)\
+            .join(Building, Building.owner_id == Player.id)\
+            .all()
+
+    @property
+    def enemy_units(self):
+        return object_session(self) \
+            .query(Unit) \
+            .outerjoin(Player, Unit.owner_id == Player.id) \
+            .filter(or_(Unit.owner_id == None, Player.team != self.team)) \
+            .all()
+
+    @property
+    def team_units(self):
+        return object_session(self) \
+            .query(Unit) \
+            .select_from(Player) \
+            .filter(Player.team == self.team) \
+            .join(Unit, Unit.owner_id == Player.id) \
+            .all()
 
 
 class Battle(Base):
@@ -73,10 +102,11 @@ class Battle(Base):
 
     # collection_class=attribute_mapped_collection('cell')
     terrain = relationship("Terrain", lazy="dynamic", cascade="all, delete-orphan")
-    players = relationship("Player", primaryjoin="Player.battle_id==Battle.id", lazy="dynamic", cascade="all, delete-orphan")
-    buildings = relationship("Building", lazy="dynamic", cascade="all, delete-orphan")
-    graves = relationship("Grave", lazy="dynamic", cascade="all, delete-orphan")
-    units = relationship("Unit", lazy="dynamic", cascade="all, delete-orphan")
+    players = relationship("Player", back_populates="battle", primaryjoin="Player.battle_id==Battle.id", lazy="dynamic",
+                           cascade="all, delete-orphan")
+    buildings = relationship("Building", back_populates="battle", lazy="dynamic", cascade="all, delete-orphan")
+    graves = relationship("Grave", back_populates="battle", lazy="dynamic", cascade="all, delete-orphan")
+    units = relationship("Unit", back_populates="battle", lazy="dynamic", cascade="all, delete-orphan")
     active_player = relationship("Player", uselist=False, foreign_keys=[active_player_id], post_update=True)
 
     # def __init__(self, map_width, map_height):
@@ -103,7 +133,7 @@ class Unit(Base):
 
     id = Column(Integer, primary_key=True)
     battle_id = Column(ForeignKey('battles.id'), nullable=False)
-    owner_id = Column(ForeignKey('players.id'), nullable=False)
+    owner_id = Column(ForeignKey('players.id'))
     type = Column(String, nullable=False)
     xp = Column(Integer, nullable=False)
     level = Column(Integer, nullable=False)
@@ -118,6 +148,7 @@ class Unit(Base):
 
     cell = composite(Cell, x, y)
 
+    battle = relationship("Battle", back_populates="units")
     owner = relationship("Player", back_populates="units")
 
     # @hybrid_property
@@ -163,6 +194,10 @@ class Building(Base):
     cell = composite(Cell, x, y)
 
     owner = relationship("Player", back_populates="buildings")
+    battle = relationship("Battle", back_populates="buildings")
+
+    def __repr__(self):
+        return 'id={0},x={1},y={2},type={3},owner_id={4}'.format(self.id, self.x, self.y, self.type, self.owner_id)
 
 
 class Grave(Base):
@@ -175,3 +210,25 @@ class Grave(Base):
     y = Column(Integer, nullable=False)
 
     cell = composite(Cell, x, y)
+
+    battle = relationship("Battle", back_populates="graves")
+
+# class UnitPrototype(Base):
+#     __tablename__ = 'unit_prototypes'
+#
+#     id = Column(Integer, primary_key=True)
+#     cost = Column(Integer, nullable=False)
+#     atk_min = Column(Integer, nullable=False)
+#     atk_max = Column(Integer, nullable=False)
+#     atk_range = Column(Integer, nullable=False)
+#     defence = Column(Integer, nullable=False)
+#     raise_range = Column(Integer, nullable=False)
+#     move = Column(Integer, nullable=False)
+#     move_type = Column(String, nullable=False)
+#     bonus_atk_against_flying = Column(Integer, nullable=False)
+#     bonus_atk_against_skeleton = Column(Integer, nullable=False)
+#     without_grave = Column(Boolean, nullable=False)
+#     can_fix_buildings = Column(ARRAY(Integer), nullable=False)
+#     can_occupy_buildings = Column(ARRAY(Integer), nullable=False)
+#     can_act_after_move = Column(Boolean, nullable=False)
+#     can_destroy_building = Column(Boolean, nullable=False)
