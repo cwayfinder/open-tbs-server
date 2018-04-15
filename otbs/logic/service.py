@@ -1,10 +1,8 @@
-from sqlalchemy import or_
-
 from otbs.db.db_constants import db_session
 from otbs.db.firestore import fs
 from otbs.db.models import Terrain, Building, Unit, Commander, Player, Battle, Cell
 from otbs.logic.helpers import get_cell_defence
-from otbs.logic.path_finder import get_available_path, get_cell_resistance
+from otbs.logic.unit_actions import get_available_actions
 from otbs.logic.unit_master import prototypes
 
 
@@ -115,6 +113,7 @@ def handle_click_on_cell(x: int, y: int, battle_id: int):
         actions = {}
 
     if cell in actions.keys():
+        print(actions[cell])
         return
 
     unit = Unit.query.filter_by(battle_id=battle_id, x=x, y=y).one_or_none()
@@ -129,10 +128,6 @@ def select_unit(unit):
     unit.battle.selected_unit = unit
     db_session.commit()
 
-    sync_selected_unit(unit)
-
-
-def sync_selected_unit(unit):
     battle_ref = fs.collection('battles').document(str(unit.battle.id))
 
     actions = get_available_actions(unit)
@@ -161,64 +156,3 @@ def clear_selected_unit(battle):
     battle_ref.update({
         'selectedUnit': {}
     })
-
-
-def get_unit_possible_moves(unit):
-    battle = unit.battle
-
-    max_x = battle.map_width - 1
-    max_y = battle.map_height - 1
-
-    move_type = prototypes[unit.type].get('moveType', None)
-    resistances = {Cell(t.x, t.y): get_cell_resistance(t.type, move_type) for t in battle.terrain.all()}
-    enemy_units = Unit.query.filter_by(id=unit.id).one().owner.enemy_units
-    obstacles = {Cell(unit.x, unit.y) for unit in enemy_units}
-
-    return get_available_path(Cell(unit.x, unit.y), prototypes[unit.type]['mov'] - 1, max_x, max_y,
-                              resistances=resistances,
-                              obstacles=obstacles)
-
-
-def can_unit_fix(unit):
-    can_fix = prototypes[unit.type].get('canFixBuilding', None)
-
-    if can_fix:
-        building = Building.query \
-            .filter_by(battle_id=unit.battle_id, x=unit.x, y=unit.y) \
-            .filter_by(state='destroyed') \
-            .one_or_none()
-
-        if building:
-            return True
-
-    return False
-
-
-def can_unit_occupy(unit):
-    can_occupy = prototypes[unit.type].get('canOccupyBuilding', None)
-
-    if can_occupy:
-        building = Building.query \
-            .filter_by(battle_id=unit.battle_id, x=unit.x, y=unit.y) \
-            .filter_by(state='normal') \
-            .filter(Building.type.in_(can_occupy)) \
-            .outerjoin(Player) \
-            .filter(or_(Player.id == None, Player.team != unit.owner.team)) \
-            .one_or_none()
-
-        if building:
-            return True
-
-    return False
-
-
-def get_available_actions(unit):
-    actions = {cell: 'move' for cell in get_unit_possible_moves(unit)}
-
-    if can_unit_fix(unit):
-        actions[unit.cell] = 'fix-building'
-
-    if can_unit_occupy(unit):
-        actions[unit.cell] = 'occupy-building'
-
-    return actions
