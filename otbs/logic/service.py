@@ -2,7 +2,6 @@ from sqlalchemy import or_
 
 from otbs.db.db_constants import db_session
 from otbs.db.firestore import fs
-from otbs.db.fs_utls import delete_collection
 from otbs.db.models import Terrain, Building, Unit, Commander, Player, Battle, Cell
 from otbs.logic.helpers import get_cell_defence
 from otbs.logic.path_finder import get_available_path, get_cell_resistance
@@ -107,15 +106,36 @@ def sync_battle(battle_id):
 
 
 def handle_click_on_cell(x: int, y: int, battle_id: int):
-    unit = Unit.query.filter_by(battle_id=battle_id, x=x, y=y).one()
-    actions = get_available_actions(unit.id)
-    print(actions)
-    sync_selected_unit(battle_id, actions, unit)
+    battle = Battle.query.filter_by(id=battle_id).one()
+    cell = Cell(x, y)
+
+    if battle.selected_unit:
+        actions = get_available_actions(battle.selected_unit)
+    else:
+        actions = {}
+
+    if cell in actions.keys():
+        return
+
+    unit = Unit.query.filter_by(battle_id=battle_id, x=x, y=y).one_or_none()
+    if unit:
+        select_unit(unit)
+        return
+
+    clear_selected_unit(battle)
 
 
-def sync_selected_unit(battle_id, actions, unit):
-    battle_ref = fs.collection('battles').document(str(battle_id))
+def select_unit(unit):
+    unit.battle.selected_unit = unit
+    db_session.commit()
 
+    sync_selected_unit(unit)
+
+
+def sync_selected_unit(unit):
+    battle_ref = fs.collection('battles').document(str(unit.battle.id))
+
+    actions = get_available_actions(unit)
     action_list = [{'x': cell.x, 'y': cell.y, 'type': action_type} for cell, action_type in actions.items()]
     battle_ref.update({
         'selectedUnit': {
@@ -127,12 +147,23 @@ def sync_selected_unit(battle_id, actions, unit):
                 'extraDef': get_cell_defence(unit.id),
                 'level': unit.level,
             },
+            'x': unit.x,
+            'y': unit.y,
         }
     })
 
 
-def get_unit_possible_moves(unit_id: int):
-    unit = Unit.query.filter_by(id=unit_id).one()
+def clear_selected_unit(battle):
+    battle.selected_unit = None
+    db_session.commit()
+
+    battle_ref = fs.collection('battles').document(str(battle.id))
+    battle_ref.update({
+        'selectedUnit': {}
+    })
+
+
+def get_unit_possible_moves(unit):
     battle = unit.battle
 
     max_x = battle.map_width - 1
@@ -140,15 +171,15 @@ def get_unit_possible_moves(unit_id: int):
 
     move_type = prototypes[unit.type].get('moveType', None)
     resistances = {Cell(t.x, t.y): get_cell_resistance(t.type, move_type) for t in battle.terrain.all()}
-    enemy_units = Unit.query.filter_by(id=unit_id).one().owner.enemy_units
+    enemy_units = Unit.query.filter_by(id=unit.id).one().owner.enemy_units
     obstacles = {Cell(unit.x, unit.y) for unit in enemy_units}
 
-    return get_available_path(Cell(unit.x, unit.y), prototypes[unit.type]['mov'] - 1, max_x, max_y, resistances=resistances,
+    return get_available_path(Cell(unit.x, unit.y), prototypes[unit.type]['mov'] - 1, max_x, max_y,
+                              resistances=resistances,
                               obstacles=obstacles)
 
 
-def can_unit_fix(unit_id):
-    unit = Unit.query.filter_by(id=unit_id).one()
+def can_unit_fix(unit):
     can_fix = prototypes[unit.type].get('canFixBuilding', None)
 
     if can_fix:
@@ -163,8 +194,7 @@ def can_unit_fix(unit_id):
     return False
 
 
-def can_unit_occupy(unit_id):
-    unit = Unit.query.filter_by(id=unit_id).one()
+def can_unit_occupy(unit):
     can_occupy = prototypes[unit.type].get('canOccupyBuilding', None)
 
     if can_occupy:
@@ -182,15 +212,13 @@ def can_unit_occupy(unit_id):
     return False
 
 
-def get_available_actions(unit_id: int):
-    unit = Unit.query.filter_by(id=unit_id).one()
+def get_available_actions(unit):
+    actions = {cell: 'move' for cell in get_unit_possible_moves(unit)}
 
-    actions = {cell: 'move' for cell in get_unit_possible_moves(unit_id)}
-
-    if can_unit_fix(unit_id):
+    if can_unit_fix(unit):
         actions[unit.cell] = 'fix-building'
 
-    if can_unit_occupy(unit_id):
+    if can_unit_occupy(unit):
         actions[unit.cell] = 'occupy-building'
 
     return actions

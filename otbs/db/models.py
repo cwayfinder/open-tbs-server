@@ -64,11 +64,11 @@ class Player(Base):
 
     @property
     def enemy_buildings(self):
-        return object_session(self)\
-            .query(Building)\
-            .select_from(Player)\
-            .filter(Player.team != self.team)\
-            .join(Building, Building.owner_id == Player.id)\
+        return object_session(self) \
+            .query(Building) \
+            .select_from(Player) \
+            .filter(Player.team != self.team) \
+            .join(Building, Building.owner_id == Player.id) \
             .all()
 
     @property
@@ -97,8 +97,9 @@ class Battle(Base):
     circle_count = Column(Integer)
     map_width = Column(Integer, nullable=False)
     map_height = Column(Integer, nullable=False)
-    active_player_id = Column(Integer, ForeignKey('players.id', name='fk_active_player', use_alter=True))
     winner_team = Column(Integer)
+    active_player_id = Column(Integer, ForeignKey('players.id', name='fk_active_player', use_alter=True))
+    selected_unit_id = Column(Integer, ForeignKey('units.id', name='fk_selected_unit', use_alter=True))
 
     # collection_class=attribute_mapped_collection('cell')
     terrain = relationship("Terrain", lazy="dynamic", cascade="all, delete-orphan")
@@ -106,8 +107,10 @@ class Battle(Base):
                            cascade="all, delete-orphan")
     buildings = relationship("Building", back_populates="battle", lazy="dynamic", cascade="all, delete-orphan")
     graves = relationship("Grave", back_populates="battle", lazy="dynamic", cascade="all, delete-orphan")
-    units = relationship("Unit", back_populates="battle", lazy="dynamic", cascade="all, delete-orphan")
+    units = relationship("Unit", back_populates="battle", primaryjoin="Unit.battle_id==Battle.id", lazy="dynamic",
+                         cascade="all, delete-orphan")
     active_player = relationship("Player", uselist=False, foreign_keys=[active_player_id], post_update=True)
+    selected_unit = relationship("Unit", uselist=False, foreign_keys=[selected_unit_id], post_update=True)
 
     # def __init__(self, map_width, map_height):
     #     pass
@@ -132,7 +135,7 @@ class Unit(Base):
     __tablename__ = 'units'
 
     id = Column(Integer, primary_key=True)
-    battle_id = Column(ForeignKey('battles.id'), nullable=False)
+    battle_id = Column(ForeignKey('battles.id', name='fk_unit_battle'), nullable=False)
     owner_id = Column(ForeignKey('players.id'))
     type = Column(String, nullable=False)
     xp = Column(Integer, nullable=False)
@@ -148,7 +151,7 @@ class Unit(Base):
 
     cell = composite(Cell, x, y)
 
-    battle = relationship("Battle", back_populates="units")
+    battle = relationship("Battle", back_populates="units", foreign_keys=[battle_id])
     owner = relationship("Player", back_populates="units")
 
     # @hybrid_property
