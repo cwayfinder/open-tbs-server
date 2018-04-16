@@ -133,10 +133,10 @@ def select_unit(unit):
     unit.battle.selected_unit = unit
     db_session.commit()
 
-    sync_unit_actions(unit)
+    sync_selected_unit(unit)
 
 
-def sync_unit_actions(unit):
+def sync_selected_unit(unit):
     actions = get_available_actions(unit)
     action_list = [{'x': cell.x, 'y': cell.y, 'type': action_type} for cell, action_type in actions.items()]
 
@@ -189,9 +189,25 @@ def move_unit(unit, cell):
         'y': cell.y,
     })
 
-    sync_unit_actions(unit)
+    sync_selected_unit(unit)
 
     # TODO: update wisp aura
+
+
+def fix_building(unit):
+    building = Building.query.filter_by(battle=unit.battle, x=unit.x, y=unit.y).one()
+
+    building.owner = unit.owner
+    unit.did_fix = True
+    db_session.commit()
+
+    battle_ref = fs.collection('battles').document(str(unit.battle.id))
+    building_ref = battle_ref.collection('buildings').document(str(building.id))
+    building_ref.update({
+        'state': 'normal',
+    })
+
+    sync_selected_unit(unit)
 
 
 def occupy_building(unit):
@@ -207,4 +223,4 @@ def occupy_building(unit):
         'color': building.owner.color,
     })
 
-    sync_unit_actions(unit)
+    sync_selected_unit(unit)
