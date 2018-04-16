@@ -2,7 +2,7 @@ from otbs.db.db_constants import db_session
 from otbs.db.firestore import fs
 from otbs.db.models import Terrain, Building, Unit, Commander, Player, Battle, Cell
 from otbs.logic.helpers import get_cell_defence
-from otbs.logic.unit_actions import get_available_actions
+from otbs.logic.unit_actions_availability import get_available_actions
 from otbs.logic.unit_master import prototypes
 
 
@@ -64,10 +64,10 @@ def do_start_battle(battle_map, preferences):
     db_session.add(battle)
     db_session.commit()
 
+    sync_battle(battle)
 
-def sync_battle(battle_id):
-    battle = Battle.query.filter_by(id=battle_id).join(Battle.active_player).one()
 
+def sync_battle(battle):
     battle_ref = fs.collection('battles').document(str(battle.id))
     battle_ref.set({
         'width': battle.map_width,
@@ -113,7 +113,12 @@ def handle_click_on_cell(x: int, y: int, battle_id: int):
         actions = {}
 
     if cell in actions.keys():
-        print(actions[cell])
+        action = actions[cell]
+        print(action)
+        if action == 'move':
+            move_unit(battle.selected_unit, cell)
+        elif action == 'occupy-building':
+            occupy_building(battle.selected_unit)
         return
 
     unit = Unit.query.filter_by(battle_id=battle_id, x=x, y=y).one_or_none()
@@ -128,10 +133,14 @@ def select_unit(unit):
     unit.battle.selected_unit = unit
     db_session.commit()
 
-    battle_ref = fs.collection('battles').document(str(unit.battle.id))
+    sync_unit_actions(unit)
 
+
+def sync_unit_actions(unit):
     actions = get_available_actions(unit)
     action_list = [{'x': cell.x, 'y': cell.y, 'type': action_type} for cell, action_type in actions.items()]
+
+    battle_ref = fs.collection('battles').document(str(unit.battle.id))
     battle_ref.update({
         'selectedUnit': {
             'actions': action_list,
@@ -156,3 +165,46 @@ def clear_selected_unit(battle):
     battle_ref.update({
         'selectedUnit': {}
     })
+
+
+def move_unit(unit, cell):
+    unit_ref = fs.collection('battles').document(str(unit.battle.id)).collection('units').document(str(unit.id))
+    unit_ref.update({
+        'state': 'moving',
+        'stateParams': {
+            'x': cell.x,
+            'y': cell.y,
+        }
+    })
+
+    unit.x = cell.x
+    unit.y = cell.y
+    unit.did_move = True
+    db_session.commit()
+
+    unit_ref.update({
+        'state': 'waiting',
+        'stateParams': {},
+        'x': cell.x,
+        'y': cell.y,
+    })
+
+    sync_unit_actions(unit)
+
+    # TODO: update wisp aura
+
+
+def occupy_building(unit):
+    building = Building.query.filter_by(battle=unit.battle, x=unit.x, y=unit.y).one()
+
+    building.owner = unit.owner
+    unit.did_occupy = True
+    db_session.commit()
+
+    battle_ref = fs.collection('battles').document(str(unit.battle.id))
+    building_ref = battle_ref.collection('buildings').document(str(building.id))
+    building_ref.update({
+        'color': building.owner.color,
+    })
+
+    sync_unit_actions(unit)

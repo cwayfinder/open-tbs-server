@@ -1,7 +1,7 @@
 import re
 
 from otbs.db.models import Unit, Building, Terrain
-from otbs.logic import map_config
+from otbs.logic.map_config import map_config
 
 
 def get_cell_defence(unit_id):

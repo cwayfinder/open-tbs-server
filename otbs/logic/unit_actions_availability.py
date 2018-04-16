@@ -18,6 +18,9 @@ def get_available_actions(unit):
 
 
 def get_unit_possible_moves(unit):
+    if unit.did_move:
+        return {}
+
     battle = unit.battle
 
     max_x = battle.map_width - 1
