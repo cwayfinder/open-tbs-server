@@ -28,10 +28,10 @@ def get_cell_resistance(cell_type: str, move_type: str = None):
         return terrain_config['pathResistance']
 
 
-def get_available_path(cell: Cell, range: int, max_x: int, max_y: int, *,
+def get_available_path(cell: Cell, range_: int, max_x: int, max_y: int, *,
                        resistances: dict = None,
                        obstacles: set = set()):
-    available_path = []
+    available_path = set()
     visited_points = []
 
     def run(start: Cell, mov: int):
@@ -39,7 +39,7 @@ def get_available_path(cell: Cell, range: int, max_x: int, max_y: int, *,
             visited_points.append(VisitedPoint(start, mov))
 
             if start not in available_path:
-                available_path.append(start)
+                available_path.add(start)
 
             for further_cell in get_further_cells(start):
                 resistance = resistances[further_cell] if resistances else 1
@@ -55,7 +55,7 @@ def get_available_path(cell: Cell, range: int, max_x: int, max_y: int, *,
 
         return further_cells
 
-    run(cell, range)
+    run(cell, range_)
 
-    available_path.pop(0)
+    available_path.remove(cell)
     return available_path

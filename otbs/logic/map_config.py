@@ -13,5 +13,5 @@ map_config = {
     'hill': {'pathResistance': 2, 'defence': 10},
     'forest': {'pathResistance': 2, 'defence': 10},
     'stone': {'pathResistance': 3, 'defence': 15},
-    'water': {'pathResistance': 3, 'flowPathResistance': 1, 'defence': 0},
-};
+    'water': {'pathResistance': 3, 'flowPathResistance': 1, 'defence': 0, 'flowDefence': 15},
+}
