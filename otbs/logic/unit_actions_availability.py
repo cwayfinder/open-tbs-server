@@ -25,7 +25,7 @@ def get_available_actions(unit):
 
 def get_unit_possible_moves(unit):
     if unit.did_move:
-        return {}
+        return set()
 
     battle = unit.battle
 
@@ -91,6 +91,9 @@ def get_buildings_under_attack(unit):
 
 
 def get_units_under_attack(unit):
+    if unit.did_attack:
+        return set()
+
     units = unit.owner.enemy_units
     enemies_cells = {Cell(b.x, b.y) for b in units}
     targets = get_cells_under_attack(unit).intersection(enemies_cells)

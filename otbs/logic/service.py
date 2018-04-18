@@ -272,7 +272,7 @@ def decrease_unit_hp(unit, delta_hp):
     unit_ref.update({
         'state': 'bleeding',
         'stateParams': {
-            'delta': delta_hp,
+            'deltaHp': delta_hp,
         }
     })
 
@@ -303,7 +303,11 @@ def kill_unit(unit: Unit):
 
         db_session.commit()
     else:
-        Unit.query.filter_by(id=unit.id).delete(synchronize_session=False)
+        if unit.battle.selected_unit == unit:
+            unit.battle.selected_unit = None
+            db_session.commit()
+
+        Unit.query.filter_by(id=unit.id).delete()
         battle_ref.collection('units').document(str(unit.id)).delete()
 
         grave = Grave(x=unit.x, y=unit.y, ttl=2, battle=unit.battle)
@@ -367,5 +371,4 @@ def strike_back(defender, attacker):
     defender_ref.update({
         'state': 'waiting',
         'stateParams': {},
-        'didAttack': True,
     })
