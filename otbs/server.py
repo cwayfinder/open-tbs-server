@@ -10,6 +10,7 @@ from otbs.logic.service import do_start_battle, handle_click_on_cell
 app = Flask(__name__)
 CORS(app)
 
+
 @app.teardown_appcontext
 def shutdown_session(exception=None):
     db_session.remove()
@@ -30,8 +31,9 @@ def start_battle():
 @app.route("/api/battle/<int:battle_id>/handle-click-on-cell", methods=["POST"])
 def handle_click(battle_id):
     data = json.loads(request.data)
-    handle_click_on_cell(data['x'], data['y'], battle_id)
-    return jsonify({'status': 'ok'})
+    commands = handle_click_on_cell(data['x'], data['y'], battle_id)
+    response_data = {'status': 'ok', 'commands': commands if commands else []}
+    return jsonify(response_data)
 
 
 if __name__ == '__main__':
