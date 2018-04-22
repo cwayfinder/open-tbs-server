@@ -1,8 +1,10 @@
 import bisect
 
+from sqlalchemy import inspect
+
 from otbs.db.db_constants import db_session
-from otbs.db.firestore import fs
 from otbs.db.models import Unit, Grave, Building
+from otbs.db.pusher import pusher
 from otbs.logic.helpers import calculate_damage, get_cell_defence_bonus
 from otbs.logic.unit_actions_availability import can_strike_back, get_available_actions
 from otbs.logic.unit_master import levelList, prototypes
@@ -19,20 +21,17 @@ def sync_selected_unit(unit):
     actions = get_available_actions(unit)
     action_list = [{'x': cell.x, 'y': cell.y, 'type': action_type} for cell, action_type in actions.items()]
 
-    battle_ref = fs.collection('battles').document(str(unit.battle.id))
-    battle_ref.update({
-        'selectedUnit': {
-            'actions': action_list,
-            'briefInfo': {
-                'atkMin': prototypes[unit.type]['atk']['min'],
-                'atkMax': prototypes[unit.type]['atk']['max'],
-                'def': prototypes[unit.type]['def'],
-                'extraDef': get_cell_defence_bonus(unit),
-                'level': unit.level,
-            },
-            'x': unit.x,
-            'y': unit.y,
-        }
+    push_command(unit.battle.id, 'update-selected-unit', {
+        'actions': action_list,
+        'briefInfo': {
+            'atkMin': prototypes[unit.type]['atk']['min'],
+            'atkMax': prototypes[unit.type]['atk']['max'],
+            'def': prototypes[unit.type]['def'],
+            'extraDef': get_cell_defence_bonus(unit),
+            'level': unit.level,
+        },
+        'x': unit.x,
+        'y': unit.y,
     })
 
 
@@ -40,15 +39,11 @@ def clear_selected_unit(battle):
     battle.selected_unit = None
     db_session.commit()
 
-    battle_ref = fs.collection('battles').document(str(battle.id))
-    battle_ref.update({
-        'selectedUnit': {}
-    })
+    push_command(battle.id, 'clear-selected-unit', {})
 
 
 def move_unit(unit, cell):
-    unit_ref = fs.collection('battles').document(str(unit.battle.id)).collection('units').document(str(unit.id))
-    unit_ref.update({
+    update_unit(unit, {
         'state': 'moving',
         'stateParams': {
             'x': cell.x,
@@ -61,7 +56,7 @@ def move_unit(unit, cell):
     unit.did_move = True
     db_session.commit()
 
-    unit_ref.update({
+    update_unit(unit, {
         'state': 'waiting',
         'stateParams': {},
         'x': cell.x,
@@ -80,9 +75,7 @@ def fix_building(unit):
     unit.did_fix = True
     db_session.commit()
 
-    battle_ref = fs.collection('battles').document(str(unit.battle.id))
-    building_ref = battle_ref.collection('buildings').document(str(building.id))
-    building_ref.update({
+    update_building(building, {
         'state': 'normal',
     })
 
@@ -96,9 +89,7 @@ def occupy_building(unit):
     unit.did_occupy = True
     db_session.commit()
 
-    battle_ref = fs.collection('battles').document(str(unit.battle.id))
-    building_ref = battle_ref.collection('buildings').document(str(building.id))
-    building_ref.update({
+    update_building(building, {
         'color': building.owner.color,
     })
 
@@ -106,10 +97,7 @@ def occupy_building(unit):
 
 
 def attack_unit(attacker: Unit, defender: Unit):
-    battle_ref = fs.collection('battles').document(str(attacker.battle.id))
-
-    attacker_ref = battle_ref.collection('units').document(str(attacker.id))
-    attacker_ref.update({
+    update_unit(attacker, {
         'state': 'attacking',
         'stateParams': {
             'x': defender.x,
@@ -127,7 +115,7 @@ def attack_unit(attacker: Unit, defender: Unit):
     if health > 0 and can_strike_back(defender, attacker.cell):
         strike_back(defender, attacker)
 
-    attacker_ref.update({
+    update_unit(attacker, {
         'state': 'waiting',
         'stateParams': {},
     })
@@ -135,13 +123,15 @@ def attack_unit(attacker: Unit, defender: Unit):
     attacker.did_attack = True
     db_session.commit()
 
-    sync_selected_unit(attacker)
+    if not inspect(attacker).detached:
+        sync_selected_unit(attacker)
+    else:
+        clear_selected_unit(defender.battle)
 
 
 def decrease_unit_hp(unit, delta_hp):
     health = max(unit.health - delta_hp, 0)
-    unit_ref = fs.collection('battles').document(str(unit.battle.id)).collection('units').document(str(unit.id))
-    unit_ref.update({
+    update_unit(unit, {
         'state': 'bleeding',
         'stateParams': {
             'deltaHp': delta_hp,
@@ -152,7 +142,7 @@ def decrease_unit_hp(unit, delta_hp):
         kill_unit(unit)
     else:
         unit.health = health
-        unit_ref.update({
+        update_unit(unit, {
             'state': 'waiting',
             'stateParams': {},
             'health': unit.health,
@@ -162,8 +152,6 @@ def decrease_unit_hp(unit, delta_hp):
 
 
 def kill_unit(unit: Unit):
-    battle_ref = fs.collection('battles').document(str(unit.battle_id))
-
     commander = unit.owner.commander
     if commander.unit == unit:
         commander.unit = None
@@ -171,7 +159,7 @@ def kill_unit(unit: Unit):
         db_session.commit()
 
         Unit.query.filter_by(id=unit.id).delete()
-        battle_ref.collection('units').document(str(unit.id)).delete()
+        delete_unit(unit)
 
         db_session.commit()
     else:
@@ -180,21 +168,15 @@ def kill_unit(unit: Unit):
             db_session.commit()
 
         Unit.query.filter_by(id=unit.id).delete()
-        battle_ref.collection('units').document(str(unit.id)).delete()
+        delete_unit(unit)
 
         grave = Grave(x=unit.x, y=unit.y, ttl=2, battle=unit.battle)
         db_session.add(grave)
         db_session.commit()
-
-        battle_ref.collection('graves').document(str(grave.id)).set({
-            'x': grave.x,
-            'y': grave.y,
-        })
+        add_grave(grave)
 
 
 def increase_unit_xp(unit: Unit, delta_xp: int):
-    unit_ref = fs.collection('battles').document(str(unit.battle.id)).collection('units').document(str(unit.id))
-
     xp = unit.xp + delta_xp
     level = bisect.bisect_left(levelList, xp) - 1
 
@@ -202,13 +184,13 @@ def increase_unit_xp(unit: Unit, delta_xp: int):
     unit.level = level
 
     if level > unit.level:
-        unit_ref.update({
+        update_unit(unit, {
             'state': 'gaining-level',
             'stateParams': {
                 'level': level
             },
         })
-        unit_ref.update({
+        update_unit(unit, {
             'state': 'waiting',
             'stateParams': {},
             'level': 'level'
@@ -223,10 +205,7 @@ def increase_unit_xp(unit: Unit, delta_xp: int):
 
 
 def strike_back(defender, attacker):
-    battle_ref = fs.collection('battles').document(str(attacker.battle.id))
-
-    defender_ref = battle_ref.collection('units').document(str(defender.id))
-    defender_ref.update({
+    update_unit(defender, {
         'state': 'attacking',
         'stateParams': {
             'x': attacker.x,
@@ -240,7 +219,45 @@ def strike_back(defender, attacker):
     decrease_unit_hp(attacker, dmg)
     increase_unit_xp(defender, dmg)
 
-    defender_ref.update({
+    update_unit(defender, {
         'state': 'waiting',
         'stateParams': {},
+    })
+
+
+def push_command(battle_id, type_, payload):
+    pusher.trigger(['battle-{0}'.format(battle_id)], 'server-command', {
+        'type': type_,
+        'payload': payload
+    })
+
+
+def update_building(building: Building, changes):
+    push_command(building.battle_id, 'update-building', {
+        'building': {
+            'id': building.id,
+            'changes': changes
+        }
+    })
+
+
+def update_unit(unit: Unit, changes):
+    push_command(unit.battle_id, 'update-unit', {
+        'unit': {
+            'id': unit.id,
+            'changes': changes
+        }
+    })
+
+
+def delete_unit(unit: Unit):
+    push_command(unit.battle_id, 'delete-unit', {'id': unit.id})
+
+
+def add_grave(grave: Grave):
+    push_command(grave.battle_id, 'add-grave', {
+        'grave': {
+            'x': grave.x,
+            'y': grave.y,
+        }
     })

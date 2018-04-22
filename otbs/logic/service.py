@@ -1,6 +1,5 @@
 from otbs.db.db_constants import db_session
-from otbs.db.firestore import fs
-from otbs.db.models import Terrain, Building, Unit, Commander, Player, Battle, Cell
+from otbs.db.models import Terrain, Building, Unit, Commander, Player, Battle, Cell, Grave
 from otbs.logic.unit_actions import move_unit, fix_building, occupy_building, attack_unit, select_unit, \
     clear_selected_unit
 from otbs.logic.unit_actions_availability import get_available_actions
@@ -64,43 +63,81 @@ def do_start_battle(battle_map, preferences):
     db_session.add(battle)
     db_session.commit()
 
-    sync_battle(battle)
 
+def get_battle_data(battle_id):
+    battle = Battle.query.filter_by(id=battle_id).one()
+    commands = []
 
-def sync_battle(battle):
-    battle_ref = fs.collection('battles').document(str(battle.id))
-    battle_ref.set({
-        'width': battle.map_width,
-        'height': battle.map_height,
-        'terrain': {'{0},{1}'.format(str(t.x), str(t.y)): t.type for t in battle.terrain},
-        'status': {
+    buildings = battle.buildings.outerjoin(Building.owner)
+
+    commands.append({
+        'type': 'update-map',
+        'payload': {
+            'width': battle.map_width,
+            'height': battle.map_height,
+            'terrain': {'{0},{1}'.format(str(t.x), str(t.y)): t.type for t in battle.terrain},
+            'buildings': [{
+                'x': b.x,
+                'y': b.y,
+                'type': b.type,
+            } for b in buildings]
+        }
+    })
+
+    commands.append({
+        'type': 'update-status',
+        'payload': {
             'color': battle.active_player.color,
             'unitCount': battle.active_player.unit_count,
             'unitLimit': battle.active_player.unit_limit,
             'money': battle.active_player.money,
-        },
+        }
     })
 
-    buildings_ref = battle_ref.collection('buildings')
-    for b in battle.buildings.outerjoin(Building.owner):
-        buildings_ref.document(str(b.id)).set({
-            'x': b.x,
-            'y': b.y,
-            'type': b.type,
-            'state': b.state,
-            'color': b.owner.color if b.owner else None,
-        })
+    commands.append({
+        'type': 'add-buildings',
+        'payload': {
+            'buildings': [{
+                'id': b.id,
+                'x': b.x,
+                'y': b.y,
+                'type': b.type,
+                'state': b.state,
+                'color': b.owner.color if b.owner else None,
+            } for b in buildings]
+        }
+    })
 
-    units_ref = battle_ref.collection('units')
-    for b in battle.units.outerjoin(Unit.owner):
-        units_ref.document(str(b.id)).set({
-            'x': b.x,
-            'y': b.y,
-            'type': b.type,
-            'color': b.owner.color if b.owner else None,
-            'level': b.level,
-            'state': 'waiting',
-        })
+    graves = battle.graves
+    commands.append({
+        'type': 'add-graves',
+        'payload': {
+            'graves': [{
+                'id': b.id,
+                'x': b.x,
+                'y': b.y,
+            } for b in graves]
+        }
+    })
+
+    units = battle.units.outerjoin(Unit.owner)
+    commands.append({
+        'type': 'add-units',
+        'payload': {
+            'units': [{
+                'id': b.id,
+                'x': b.x,
+                'y': b.y,
+                'type': b.type,
+                'color': b.owner.color if b.owner else None,
+                'level': b.level,
+                'health': b.health,
+                'state': 'waiting',
+            } for b in units]
+        }
+    })
+
+    return commands
 
 
 def handle_click_on_cell(x: int, y: int, battle_id: int):
