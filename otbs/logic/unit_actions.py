@@ -35,6 +35,12 @@ def sync_selected_unit(unit):
     })
 
 
+def clear_selected_unit_actions(unit):
+    push_command(unit.battle.id, 'update-selected-unit', {
+        'actions': [],
+    })
+
+
 def clear_selected_unit(battle):
     battle.selected_unit = None
     db_session.commit()

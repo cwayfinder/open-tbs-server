@@ -1,7 +1,7 @@
 from otbs.db.db_constants import db_session
 from otbs.db.models import Terrain, Building, Unit, Commander, Player, Battle, Cell, Grave
 from otbs.logic.unit_actions import move_unit, fix_building, occupy_building, attack_unit, select_unit, \
-    clear_selected_unit
+    clear_selected_unit, clear_selected_unit_actions
 from otbs.logic.unit_actions_availability import get_available_actions
 
 
@@ -152,6 +152,7 @@ def handle_click_on_cell(x: int, y: int, battle_id: int):
     if cell in actions.keys():
         action = actions[cell]
         print(action)
+        clear_selected_unit_actions(battle.selected_unit)
         if action == 'move':
             move_unit(battle.selected_unit, cell)
         elif action == 'fix-building':
