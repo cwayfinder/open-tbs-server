@@ -165,12 +165,13 @@ class Service:
                 self.attack_unit(self.battle.selected_unit, unit)
             return self
 
-        unit = Unit.query.filter_by(battle_id=self.battle.id, x=x, y=y).one_or_none()
+        unit = Unit.query.filter_by(battle_id=self.battle.id, x=x, y=y, owner=self.battle.active_player).one_or_none()
         if unit:
             self.select_unit(unit)
             return self
 
-        store = Building.query.filter_by(battle_id=self.battle.id, x=x, y=y, type='castle').one_or_none()
+        store = Building.query.filter_by(battle_id=self.battle.id, x=x, y=y, type='castle',
+                                         owner=self.battle.active_player).one_or_none()
         if store:
             self.commands.append(Command('open-store', {
                 'storeCell': {'x': store.x, 'y': store.y},
