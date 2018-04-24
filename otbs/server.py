@@ -9,7 +9,7 @@ from otbs.db.database import init_db
 from otbs.db.db_constants import db_session
 from otbs.db.models import Cell
 from otbs.db.pusher import pusher
-from otbs.logic.service import do_start_battle, handle_click_on_cell, get_battle_data, do_buy_unit
+from otbs.logic.service import Service
 
 app = Flask(__name__)
 CORS(app)
@@ -28,15 +28,15 @@ def home():
 @app.route("/api/battle/start", methods=["POST"])
 def start_battle():
     data = json.loads(request.data)
-    do_start_battle(data['map'], data['preferences'])
+    Service.start_battle(data['map'], data['preferences'])
     return jsonify({'status': 'ok'})
 
 
 @app.route("/api/battle/<int:battle_id>", methods=["GET"])
 def get_battle(battle_id):
     try:
-        commands = get_battle_data(battle_id)
-        response_data = {'status': 'ok', 'commands': commands if commands else []}
+        commands = Service(battle_id).collect_battle_data().get_commands()
+        response_data = {'status': 'ok', 'commands': commands}
         return jsonify(response_data)
     except SQLAlchemyError as e:
         response = jsonify({'error': str(e)})
@@ -47,16 +47,20 @@ def get_battle(battle_id):
 @app.route("/api/battle/<int:battle_id>/handle-click-on-cell", methods=["POST"])
 def handle_click(battle_id):
     data = json.loads(request.data)
-    commands = handle_click_on_cell(data['x'], data['y'], battle_id)
-    response_data = {'status': 'ok', 'commands': commands if commands else []}
+    commands = Service(battle_id) \
+        .handle_click_on_cell(data['x'], data['y']) \
+        .push() \
+        .get_commands()
+    response_data = {'status': 'ok', 'commands': commands}
     return jsonify(response_data)
 
 
 @app.route("/api/battle/<int:battle_id>/buy-unit", methods=["POST"])
 def buy_unit(battle_id):
     data = json.loads(request.data)
-    # commands = handle_click_on_cell(data['x'], data['y'], battle_id)
-    do_buy_unit(battle_id, data['type'], Cell(data['x'], data['y']))
+    Service(battle_id) \
+        .buy_unit(data['type'], Cell(data['x'], data['y'])) \
+        .push()
     response_data = {'status': 'ok'}
     return jsonify(response_data)
 

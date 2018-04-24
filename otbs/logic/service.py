@@ -1,103 +1,113 @@
+import bisect
+from typing import List
+
+from sqlalchemy import inspect
+
 from otbs.db.db_constants import db_session
 from otbs.db.models import Terrain, Building, Unit, Commander, Player, Battle, Cell, Grave
-from otbs.logic.unit_actions import move_unit, fix_building, occupy_building, attack_unit, select_unit, \
-    clear_selected_unit, clear_selected_unit_actions, add_unit, push_command
-from otbs.logic.unit_actions_availability import get_available_actions
-from otbs.logic.unit_master import prototypes, commanderList, commanderAddedCost
+from otbs.db.pusher import Command, pusher
+from otbs.logic.helpers import get_cell_defence_bonus, calculate_damage
+from otbs.logic.unit_actions_availability import get_available_actions, can_strike_back
+from otbs.logic.unit_master import prototypes, commanderList, commanderAddedCost, levelList
 
 
-def do_start_battle(battle_map, preferences):
-    terrain = []
-    for cell, terrain_type in battle_map['terrain'].items():
-        [x, y] = cell.split(',')
-        terrain.append(Terrain(x=x, y=y, type=terrain_type))
-    db_session.add_all(terrain)
+class Service:
+    battle: Battle
+    commands: List[Command]
+    shared_commands: List[Command]
 
-    buildings = {}
-    for b in battle_map['buildings'].values():
-        building = Building(type=b['type'], x=b['x'], y=b['y'], state=b['state'])
-        if 'ownerId' in b:
-            building.owner_id = b['ownerId']
-        buildings[b['id']] = building
-    db_session.add_all(buildings.values())
+    def __init__(self, battle_id: int):
+        self.battle = Battle.query.filter_by(id=battle_id).one()
+        self.commands = []
+        self.shared_commands = []
 
-    units = {}
-    for u in battle_map['units'].values():
-        unit = Unit(type=u['type'], x=u['x'], y=u['y'], xp=0, level=0, health=100)
-        if 'ownerId' in u:
-            unit.owner_id = u['ownerId']
-        units[u['id']] = unit
+    def push(self):
+        for command in self.shared_commands:
+            channel = 'battle-{0}'.format(self.battle.id)
+            pusher.trigger([channel], 'server-command', {
+                'type': command.type_,
+                'payload': command.payload
+            })
 
-    players = {}
-    for player_id, map_data in battle_map['players'].items():
-        pref = preferences['players'][player_id]
-        commander_unit = units[map_data['commander']['unitId']]
-        commander_unit.type = pref['commanderCharacter']
-        commander = Commander(character=pref['commanderCharacter'], death_count=0, xp=0, level=0, unit=commander_unit)
-        player = Player(color=pref['color'],
-                        team=pref['team'],
-                        money=preferences['money'],
-                        unit_limit=preferences['unitLimit'],
-                        type=pref['type'],
-                        commander=commander)
-        players[map_data['id']] = player
+        return self
 
-    for u in battle_map['units'].values():
-        if 'ownerId' in u:
-            units[u['id']].owner = players[u['ownerId']]
+    @staticmethod
+    def start_battle(battle_map, preferences):
+        terrain = []
+        for cell, terrain_type in battle_map['terrain'].items():
+            [x, y] = cell.split(',')
+            terrain.append(Terrain(x=x, y=y, type=terrain_type))
+        db_session.add_all(terrain)
 
-    db_session.add_all(players.values())
-    db_session.add_all(units.values())
+        buildings = {}
+        for b in battle_map['buildings'].values():
+            building = Building(type=b['type'], x=b['x'], y=b['y'], state=b['state'])
+            if 'ownerId' in b:
+                building.owner_id = b['ownerId']
+            buildings[b['id']] = building
+        db_session.add_all(buildings.values())
 
-    first_player_id = next(iter(dict.values(battle_map['players'])))['id']
-    first_player = players[first_player_id]
-    battle = Battle(map_width=battle_map['size']['width'],
-                    map_height=battle_map['size']['height'],
-                    turn_count=0,
-                    circle_count=0,
-                    active_player=first_player,
-                    terrain=terrain,
-                    buildings=buildings.values(),
-                    players=players.values(),
-                    units=units.values())
+        units = {}
+        for u in battle_map['units'].values():
+            unit = Unit(type=u['type'], x=u['x'], y=u['y'], xp=0, level=0, health=100)
+            if 'ownerId' in u:
+                unit.owner_id = u['ownerId']
+            units[u['id']] = unit
 
-    db_session.add(battle)
-    db_session.commit()
+        players = {}
+        for player_id, map_data in battle_map['players'].items():
+            pref = preferences['players'][player_id]
+            commander_unit = units[map_data['commander']['unitId']]
+            commander_unit.type = pref['commanderCharacter']
+            commander = Commander(character=pref['commanderCharacter'], death_count=0, xp=0, level=0, unit=commander_unit)
+            player = Player(color=pref['color'],
+                            team=pref['team'],
+                            money=preferences['money'],
+                            unit_limit=preferences['unitLimit'],
+                            type=pref['type'],
+                            commander=commander)
+            players[map_data['id']] = player
 
+        for u in battle_map['units'].values():
+            if 'ownerId' in u:
+                units[u['id']].owner = players[u['ownerId']]
 
-def get_battle_data(battle_id):
-    battle = Battle.query.filter_by(id=battle_id).one()
-    commands = []
+        db_session.add_all(players.values())
+        db_session.add_all(units.values())
 
-    buildings = battle.buildings.outerjoin(Building.owner)
+        first_player_id = next(iter(dict.values(battle_map['players'])))['id']
+        first_player = players[first_player_id]
+        battle = Battle(map_width=battle_map['size']['width'],
+                        map_height=battle_map['size']['height'],
+                        turn_count=0,
+                        circle_count=0,
+                        active_player=first_player,
+                        terrain=terrain,
+                        buildings=buildings.values(),
+                        players=players.values(),
+                        units=units.values())
 
-    commands.append({
-        'type': 'update-map',
-        'payload': {
-            'width': battle.map_width,
-            'height': battle.map_height,
-            'terrain': {'{0},{1}'.format(str(t.x), str(t.y)): t.type for t in battle.terrain},
-            'buildings': [{
-                'x': b.x,
-                'y': b.y,
-                'type': b.type,
-            } for b in buildings]
-        }
-    })
+        db_session.add(battle)
+        db_session.commit()
 
-    commands.append({
-        'type': 'update-status',
-        'payload': {
-            'color': battle.active_player.color,
-            'unitCount': battle.active_player.unit_count,
-            'unitLimit': battle.active_player.unit_limit,
-            'money': battle.active_player.money,
-        }
-    })
+    def collect_battle_data(self):
+        buildings = self.battle.buildings.outerjoin(Building.owner)
 
-    commands.append({
-        'type': 'add-buildings',
-        'payload': {
+        self.commands.append(Command('update-map', {
+            'width': self.battle.map_width,
+            'height': self.battle.map_height,
+            'terrain': {'{0},{1}'.format(str(t.x), str(t.y)): t.type for t in self.battle.terrain},
+            'buildings': [{'x': b.x, 'y': b.y, 'type': b.type} for b in buildings]
+        }))
+
+        self.commands.append(Command('update-status', {
+            'color': self.battle.active_player.color,
+            'unitCount': self.battle.active_player.unit_count,
+            'unitLimit': self.battle.active_player.unit_limit,
+            'money': self.battle.active_player.money,
+        }))
+
+        self.commands.append(Command('add-buildings', {
             'buildings': [{
                 'id': b.id,
                 'x': b.x,
@@ -106,25 +116,15 @@ def get_battle_data(battle_id):
                 'state': b.state,
                 'color': b.owner.color if b.owner else None,
             } for b in buildings]
-        }
-    })
+        }))
 
-    graves = battle.graves
-    commands.append({
-        'type': 'add-graves',
-        'payload': {
-            'graves': [{
-                'id': b.id,
-                'x': b.x,
-                'y': b.y,
-            } for b in graves]
-        }
-    })
+        graves = self.battle.graves
+        self.commands.append(Command('add-graves', {
+            'graves': [{'id': b.id, 'x': b.x, 'y': b.y} for b in graves]
+        }))
 
-    units = battle.units.outerjoin(Unit.owner)
-    commands.append({
-        'type': 'add-units',
-        'payload': {
+        units = self.battle.units.outerjoin(Unit.owner)
+        self.commands.append(Command('add-units', {
             'units': [{
                 'id': b.id,
                 'x': b.x,
@@ -135,55 +135,284 @@ def get_battle_data(battle_id):
                 'health': b.health,
                 'state': 'waiting',
             } for b in units]
-        }
-    })
+        }))
 
-    return commands
+        return self
 
+    def get_commands(self):
+        return [c.to_dict() for c in self.commands]
 
-def handle_click_on_cell(x: int, y: int, battle_id: int):
-    battle = Battle.query.filter_by(id=battle_id).one()
-    cell = Cell(x, y)
+    def handle_click_on_cell(self, x: int, y: int):
+        cell = Cell(x, y)
 
-    if battle.selected_unit:
-        actions = get_available_actions(battle.selected_unit)
-    else:
-        actions = {}
+        if self.battle.selected_unit:
+            actions = get_available_actions(self.battle.selected_unit)
+        else:
+            actions = {}
 
-    if cell in actions.keys():
-        action = actions[cell]
-        print(action)
-        clear_selected_unit_actions(battle.selected_unit)
-        if action == 'move':
-            move_unit(battle.selected_unit, cell)
-        elif action == 'fix-building':
-            fix_building(battle.selected_unit)
-        elif action == 'occupy-building':
-            occupy_building(battle.selected_unit)
-        elif action == 'attack-unit':
-            unit = Unit.query.filter_by(battle_id=battle_id, x=x, y=y).one()
-            attack_unit(battle.selected_unit, unit)
-        return
+        if cell in actions.keys():
+            action = actions[cell]
+            print(action)
+            self.clear_selected_unit_actions()
+            if action == 'move':
+                self.move_unit(self.battle.selected_unit, cell)
+            elif action == 'fix-building':
+                self.fix_building(self.battle.selected_unit)
+            elif action == 'occupy-building':
+                self.occupy_building(self.battle.selected_unit)
+            elif action == 'attack-unit':
+                unit = Unit.query.filter_by(battle_id=self.battle.id, x=x, y=y).one()
+                self.attack_unit(self.battle.selected_unit, unit)
+            return self
 
-    unit = Unit.query.filter_by(battle_id=battle_id, x=x, y=y).one_or_none()
-    if unit:
-        select_unit(unit)
-        return
+        unit = Unit.query.filter_by(battle_id=self.battle.id, x=x, y=y).one_or_none()
+        if unit:
+            self.select_unit(unit)
+            return self
 
-    store = Building.query.filter_by(battle_id=battle_id, x=x, y=y, type='castle').one_or_none()
-    if store:
-        return [{
-            'type': 'open-store',
-            'payload': {
-                'storeCell': {
-                    'x': store.x,
-                    'y': store.y,
-                },
-                'items': get_units_to_buy(battle)
+        store = Building.query.filter_by(battle_id=self.battle.id, x=x, y=y, type='castle').one_or_none()
+        if store:
+            self.commands.append(Command('open-store', {
+                'storeCell': {'x': store.x, 'y': store.y},
+                'items': get_units_to_buy(self.battle)
+            }))
+            return self
+
+        self.clear_selected_unit()
+        return self
+
+    def select_unit(self, unit):
+        self.battle.selected_unit = unit
+        db_session.commit()
+
+        self.sync_selected_unit()
+
+    def sync_selected_unit(self):
+        unit = self.battle.selected_unit
+        actions = get_available_actions(unit)
+        action_list = [{'x': cell.x, 'y': cell.y, 'type': action_type} for cell, action_type in actions.items()]
+
+        self.shared_commands.append(Command('update-selected-unit', {
+            'actions': action_list,
+            'briefInfo': {
+                'atkMin': prototypes[unit.type]['atk']['min'],
+                'atkMax': prototypes[unit.type]['atk']['max'],
+                'def': prototypes[unit.type]['def'],
+                'extraDef': get_cell_defence_bonus(unit),
+                'level': unit.level,
             },
-        }]
+            'x': unit.x,
+            'y': unit.y,
+        }))
 
-    clear_selected_unit(battle)
+    def clear_selected_unit_actions(self):
+        self.shared_commands.append(Command('update-selected-unit', {
+            'actions': [],
+        }))
+
+    def clear_selected_unit(self):
+        self.battle.selected_unit = None
+        db_session.commit()
+
+        self.shared_commands.append(Command('clear-selected-unit', {}))
+
+    def move_unit(self, unit, cell):
+        self.shared_commands.append(Command.update_unit(unit, {
+            'state': 'moving',
+            'stateParams': {
+                'x': cell.x,
+                'y': cell.y,
+            }
+        }))
+
+        unit.x = cell.x
+        unit.y = cell.y
+        unit.did_move = True
+        db_session.commit()
+
+        self.shared_commands.append(Command.update_unit(unit, {
+            'state': 'waiting',
+            'stateParams': {},
+            'x': cell.x,
+            'y': cell.y,
+        }))
+
+        self.sync_selected_unit()
+
+        # TODO: update wisp aura
+
+    def fix_building(self, unit):
+        building = Building.query.filter_by(battle=unit.battle, x=unit.x, y=unit.y).one()
+
+        building.owner = unit.owner
+        unit.did_fix = True
+        db_session.commit()
+
+        self.shared_commands.append(Command.update_building(building, {
+            'state': 'normal',
+        }))
+
+        self.sync_selected_unit()
+
+    def occupy_building(self, unit):
+        building = Building.query.filter_by(battle=unit.battle, x=unit.x, y=unit.y).one()
+
+        building.owner = unit.owner
+        unit.did_occupy = True
+        db_session.commit()
+
+        self.shared_commands.append(Command.update_building(building, {
+            'color': building.owner.color,
+        }))
+
+        self.sync_selected_unit()
+
+    def attack_unit(self, attacker: Unit, defender: Unit):
+        self.shared_commands.append(Command.update_unit(attacker, {
+            'state': 'attacking',
+            'stateParams': {
+                'x': defender.x,
+                'y': defender.y,
+                'targetType': 'unit',
+            }
+        }))
+
+        dmg = calculate_damage(attacker, defender)
+
+        health = max(defender.health - dmg, 0)
+        self.decrease_unit_hp(defender, dmg)
+        self.increase_unit_xp(attacker, dmg)
+
+        if health > 0 and can_strike_back(defender, attacker.cell):
+            self.strike_back(defender, attacker)
+
+        self.shared_commands.append(Command.update_unit(attacker, {
+            'state': 'waiting',
+            'stateParams': {},
+        }))
+
+        attacker.did_attack = True
+        db_session.commit()
+
+        if not inspect(attacker).detached:
+            self.sync_selected_unit()
+        else:
+            self.clear_selected_unit()
+
+    def decrease_unit_hp(self, unit, delta_hp):
+        health = max(unit.health - delta_hp, 0)
+        self.shared_commands.append(Command.update_unit(unit, {
+            'state': 'bleeding',
+            'stateParams': {
+                'deltaHp': delta_hp,
+            }
+        }))
+
+        if health == 0:
+            self.kill_unit(unit)
+        else:
+            unit.health = health
+            self.shared_commands.append(Command.update_unit(unit, {
+                'state': 'waiting',
+                'stateParams': {},
+                'health': unit.health,
+            }))
+
+        db_session.commit()
+
+    def kill_unit(self, unit: Unit):
+        commander = unit.owner.commander
+        if commander.unit == unit:
+            commander.unit = None
+            commander.death_count += 1
+            db_session.commit()
+
+            Unit.query.filter_by(id=unit.id).delete()
+            self.shared_commands.append(Command.delete_unit(unit))
+
+            db_session.commit()
+        else:
+            if unit.battle.selected_unit == unit:
+                unit.battle.selected_unit = None
+                db_session.commit()
+
+            Unit.query.filter_by(id=unit.id).delete()
+            self.shared_commands.append(Command.delete_unit(unit))
+
+            grave = Grave(x=unit.x, y=unit.y, ttl=2, battle=unit.battle)
+            db_session.add(grave)
+            db_session.commit()
+            self.shared_commands.append(Command.add_grave(grave))
+
+    def increase_unit_xp(self, unit: Unit, delta_xp: int):
+        xp = unit.xp + delta_xp
+        level = bisect.bisect_left(levelList, xp) - 1
+
+        unit.xp = xp
+        unit.level = level
+
+        if level > unit.level:
+            self.shared_commands.append(Command.update_unit(unit, {
+                'state': 'gaining-level',
+                'stateParams': {
+                    'level': level
+                },
+            }))
+            self.shared_commands.append(Command.update_unit(unit, {
+                'state': 'waiting',
+                'stateParams': {},
+                'level': 'level'
+            }))
+
+        commander = unit.owner.commander
+        if commander.unit_id == unit.id:
+            commander.xp = xp
+            commander.level = level
+
+        db_session.commit()
+
+    def strike_back(self, defender, attacker):
+        self.shared_commands.append(Command.update_unit(defender, {
+            'state': 'attacking',
+            'stateParams': {
+                'x': attacker.x,
+                'y': attacker.y,
+                'targetType': 'unit',
+            }
+        }))
+
+        dmg = calculate_damage(defender, attacker)
+
+        self.decrease_unit_hp(attacker, dmg)
+        self.increase_unit_xp(defender, dmg)
+
+        self.shared_commands.append(Command.update_unit(defender, {
+            'state': 'waiting',
+            'stateParams': {},
+        }))
+
+    def buy_unit(self, unit_type: str, store_cell: Cell):
+        store = Building.query.filter_by(battle_id=self.battle.id, x=store_cell.x, y=store_cell.y).one_or_none()
+
+        if store is None:
+            raise Exception('No player\'s store in that cell')
+
+        player = self.battle.active_player
+        unit = Unit(type=unit_type, x=store_cell.x, y=store_cell.y, xp=0, level=0, health=100,
+                    owner=player, battle=self.battle)
+        db_session.add(unit)
+        player.money -= get_unit_cost(unit.type, player)
+        db_session.commit()
+
+        self.shared_commands.append(Command.add_unit(unit))
+        self.shared_commands.append(Command('update-status', {
+            'unitCount': self.battle.active_player.unit_count,
+            'money': self.battle.active_player.money,
+        }))
+
+        self.select_unit(unit)
+
+        return self
 
 
 def get_units_to_buy(battle: Battle):
@@ -208,30 +437,6 @@ def get_units_to_buy(battle: Battle):
     } for unit_type, proto in to_buy.items()]
 
     return sorted(items_, key=lambda x: x['cost'])
-
-
-def do_buy_unit(battle_id: int, unit_type: str, store_cell: Cell):
-    battle = Battle.query.filter_by(id=battle_id).one()
-
-    store = Building.query.filter_by(battle_id=battle_id, x=store_cell.x, y=store_cell.y).one_or_none()
-
-    if store is None:
-        raise Exception('No player\'s store in that cell')
-
-    player = battle.active_player
-    unit = Unit(type=unit_type, x=store_cell.x, y=store_cell.y, xp=0, level=0, health=100,
-                owner=player, battle=battle)
-    db_session.add(unit)
-    player.money -= get_unit_cost(unit.type, player)
-    db_session.commit()
-
-    add_unit(unit)
-    push_command(battle_id, 'update-status', {
-        'unitCount': battle.active_player.unit_count,
-        'money': battle.active_player.money,
-    })
-
-    select_unit(unit)
 
 
 def get_unit_cost(unit_type, player: Player):
