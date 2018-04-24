@@ -68,6 +68,10 @@ class Service:
                             commander=commander)
             players[map_data['id']] = player
 
+        for b in battle_map['buildings'].values():
+            if 'ownerId' in b:
+                buildings[b['id']].owner = players[b['ownerId']]
+
         for u in battle_map['units'].values():
             if 'ownerId' in u:
                 units[u['id']].owner = players[u['ownerId']]
