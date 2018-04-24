@@ -7,8 +7,9 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from otbs.db.database import init_db
 from otbs.db.db_constants import db_session
+from otbs.db.models import Cell
 from otbs.db.pusher import pusher
-from otbs.logic.service import do_start_battle, handle_click_on_cell, get_battle_data
+from otbs.logic.service import do_start_battle, handle_click_on_cell, get_battle_data, do_buy_unit
 
 app = Flask(__name__)
 CORS(app)
@@ -48,6 +49,15 @@ def handle_click(battle_id):
     data = json.loads(request.data)
     commands = handle_click_on_cell(data['x'], data['y'], battle_id)
     response_data = {'status': 'ok', 'commands': commands if commands else []}
+    return jsonify(response_data)
+
+
+@app.route("/api/battle/<int:battle_id>/buy-unit", methods=["POST"])
+def buy_unit(battle_id):
+    data = json.loads(request.data)
+    # commands = handle_click_on_cell(data['x'], data['y'], battle_id)
+    do_buy_unit(battle_id, data['type'], Cell(data['x'], data['y']))
+    response_data = {'status': 'ok'}
     return jsonify(response_data)
 
 

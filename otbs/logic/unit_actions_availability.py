@@ -37,9 +37,10 @@ def get_unit_possible_moves(unit):
     enemy_units = Unit.query.filter_by(id=unit.id).one().owner.enemy_units
     obstacles = {Cell(unit.x, unit.y) for unit in enemy_units}
 
-    return get_available_path(Cell(unit.x, unit.y), prototypes[unit.type]['mov'], max_x, max_y,
-                              resistances=resistances,
+    path = get_available_path(Cell(unit.x, unit.y), prototypes[unit.type]['mov'], max_x, max_y, resistances=resistances,
                               obstacles=obstacles)
+    occupied_cells = {Cell(unit.x, unit.y) for unit in Unit.query.filter_by(battle_id=battle.id).all()}
+    return path.difference(occupied_cells)
 
 
 def can_fix_building(unit):

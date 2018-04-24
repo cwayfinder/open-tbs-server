@@ -247,6 +247,21 @@ def update_building(building: Building, changes):
     })
 
 
+def add_unit(unit: Unit):
+    push_command(unit.battle_id, 'add-unit', {
+        'unit': {
+            'id': unit.id,
+            'x': unit.x,
+            'y': unit.y,
+            'type': unit.type,
+            'color': unit.owner.color if unit.owner else None,
+            'level': unit.level,
+            'health': unit.health,
+            'state': 'waiting',
+        }
+    })
+
+
 def update_unit(unit: Unit, changes):
     push_command(unit.battle_id, 'update-unit', {
         'unit': {

@@ -12,6 +12,8 @@ commanderAddedCost = 200
 defaultHealth = 100
 prototypes = {
     'galamar': {
+        'name': 'Galamar',
+        'description': 'Galamar (commander) is very strong in attack and defence. Commanders can also occupy castles to produce troops and can be revived in the castle if they fall in battle.',
         'atk': {'min': 55, 'max': 65},
         'atkRange': 1,
         'def': 20,
@@ -22,6 +24,8 @@ prototypes = {
         'cost': 200,
     },
     'valadorn': {
+        'name': 'Valadorn',
+        'description': 'Valadorn (commander) is very strong in attack and defence. Commanders can also occupy castles to produce troops and can be revived in the castle if they fall in battle.',
         'atk': {'min': 55, 'max': 65},
         'atkRange': 1,
         'def': 20,
@@ -32,6 +36,8 @@ prototypes = {
         'cost': 200,
     },
     'demon-lord': {
+        'name': 'Demon Lord',
+        'description': 'Demon Lords (commander) is very strong in attack and defence. Commanders can also occupy castles to produce troops and can be revived in the castle if they fall in battle.',
         'atk': {'min': 55, 'max': 65},
         'atkRange': 1,
         'def': 20,
@@ -42,6 +48,8 @@ prototypes = {
         'cost': 200,
     },
     'saeth': {
+        'name': 'Saeth',
+        'description': 'Saeth (commander) is very strong in attack and defence. Commanders can also occupy castles to produce troops and can be revived in the castle if they fall in battle.',
         'atk': {'min': 55, 'max': 65},
         'atkRange': 1,
         'def': 20,
@@ -52,13 +60,17 @@ prototypes = {
         'cost': 200,
     },
     'saeth-heavens-fury': {
+        'name': 'Saeth',
+        'description': 'Saeth (commander) is very strong in attack and defence. Commanders can also occupy castles to produce troops and can be revived in the castle if they fall in battle.',
         'atk': {'min': 55, 'max': 65},
         'atkRange': 15,
         'def': 45,
         'mov': 0,
-        'canNotBeBuy': True,
+        'cost': 0,
     },
     'soldier': {
+        'name': 'Soldier',
+        'description': 'Soldiers are solid all-round fighters that form the backbone of any army. Soldiers are also the only unit that can capture towns to earn gold.',
         'atk': {'min': 50, 'max': 55},
         'atkRange': 1,
         'def': 5,
@@ -68,6 +80,8 @@ prototypes = {
         'cost': 150,
     },
     'archer': {
+        'name': 'Archer',
+        'description': 'With their powerful bows archers can attack from a distance and are especially powerful against airborne enemies.',
         'atk': {'min': 50, 'max': 55},
         'atkRange': 2,
         'def': 5,
@@ -76,6 +90,8 @@ prototypes = {
         'cost': 250,
     },
     'elemental': {
+        'name': 'Elemental',
+        'description': 'Elementals are magical water spirits. When in water, Elementals have greater movement and stronger defence.',
         'atk': {'min': 50, 'max': 55},
         'atkRange': 1,
         'def': 10,
@@ -84,6 +100,8 @@ prototypes = {
         'cost': 300,
     },
     'sorceress': {
+        'name': 'Sorceress',
+        'description': 'Skilled in the use of magic, Sorceresses are weak in close combat. However, their ability to summon fighting skeletons from dead troops can be decisive in battle.',
         'atk': {'min': 40, 'max': 45},
         'atkRange': 1,
         'raiseRange': 2,
@@ -92,6 +110,8 @@ prototypes = {
         'cost': 400,
     },
     'wisp': {
+        'name': 'Wisp',
+        'description': 'These mystical beings of pure light radiate an aura which strengthens the attacking abilities of nearby friendly units. In close combat they are especially deadly against skeletons.',
         'atk': {'min': 35, 'max': 40},
         'atkRange': 1,
         'auraRange': 3,
@@ -101,6 +121,8 @@ prototypes = {
         'cost': 500,
     },
     'dire-wolf': {
+        'name': 'Dire wolf',
+        'description': 'Dire Wolves are feared hunters that travel in packs. Beware - their bite is poisonous and reduces both attack and defence levels for one turn.',
         'atk': {'min': 60, 'max': 65},
         'atkRange': 1,
         'def': 15,
@@ -109,6 +131,8 @@ prototypes = {
         'cost': 600,
     },
     'golem': {
+        'name': 'Golem',
+        'description': 'Golems are ancient beings - slow but immensely strong in defence. A golem stationed in a building or a well defended mountain is very difficult to defeat.',
         'atk': {'min': 60, 'max': 70},
         'atkRange': 1,
         'def': 30,
@@ -116,6 +140,8 @@ prototypes = {
         'cost': 600,
     },
     'catapult': {
+        'name': 'Catapult',
+        'description': 'Catapults blaze a trail of destruction with their enormous attack range. However, their relative immobility and inability to attack up close make them vulnerable, so guard them well. Catapults can either move or attack during a turn, but not do both.',
         'atk': {'min': 50, 'max': 70},
         'atkRange': {'min': 2, 'max': 4},
         'def': 10,
@@ -125,14 +151,18 @@ prototypes = {
         'canDestroyBuilding': True,
     },
     'dragon': {
+        'name': 'Dragon',
+        'description': 'These massive flying beasts have ruled over the mountains of mist since ancient times. They are extremely mobile as well as deadly in attack on land, air and sea.',
         'atk': {'min': 70, 'max': 80},
         'atkRange': 1,
         'def': 25,
         'mov': 6,
         'moveType': 'fly',
-        'cost': 1e3,
+        'cost': 1000,
     },
     'skeleton': {
+        'name': 'Skeleton',
+        'description': 'Summoned by Sorceresses, these lifeless warriors are as strong as soldiers and deadly opponents on any battlefield.',
         'atk': {'min': 40, 'max': 50},
         'atkRange': 1,
         'def': 2,
@@ -141,6 +171,8 @@ prototypes = {
         'cost': 0,
     },
     'crystal': {
+        'name': 'Crystal',
+        'description': 'These legendary Crystals were originally retrieved from the ruins of the Ancient Citadel. Little is known of their power, except that they are rumoured to protect the kingdom, while also possessing the power to destroy it.',
         'atk': {'min': 0, 'max': 0},
         'atkRange': 0,
         'def': 15,
