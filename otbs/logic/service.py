@@ -6,6 +6,7 @@ from sqlalchemy import inspect
 from otbs.db.db_constants import db_session
 from otbs.db.models import Terrain, Building, Unit, Commander, Player, Battle, Cell, Grave
 from otbs.db.pusher import Command, pusher
+from otbs.logic.building_master import building_prototypes
 from otbs.logic.helpers import get_cell_defence_bonus, calculate_damage
 from otbs.logic.unit_actions_availability import get_available_actions, can_strike_back
 from otbs.logic.unit_master import prototypes, commanderList, commanderAddedCost, levelList
@@ -59,13 +60,15 @@ class Service:
             pref = preferences['players'][player_id]
             commander_unit = units[map_data['commander']['unitId']]
             commander_unit.type = pref['commanderCharacter']
-            commander = Commander(character=pref['commanderCharacter'], death_count=0, xp=0, level=0, unit=commander_unit)
+            commander = Commander(character=pref['commanderCharacter'], death_count=0, xp=0, level=0,
+                                  unit=commander_unit)
             player = Player(color=pref['color'],
                             team=pref['team'],
                             money=preferences['money'],
                             unit_limit=preferences['unitLimit'],
                             type=pref['type'],
-                            commander=commander)
+                            commander=commander,
+                            defeated=False)
             players[map_data['id']] = player
 
         for b in battle_map['buildings'].values():
@@ -418,6 +421,90 @@ class Service:
         self.select_unit(unit)
 
         return self
+
+    def end_turn(self):
+        self.clear_selected_unit()
+        self.reset_units()
+        self.activate_next_player()
+        self.collect_gold()
+        self.heal_units()
+
+        return self
+
+    def reset_units(self):
+        units = Unit.query.filter_by(battle_id=self.battle.id, owner=self.battle.active_player).all()
+        for unit in units:
+            unit.did_move = False
+            unit.did_fix = False
+            unit.did_occupy = False
+            unit.did_attack = False
+        db_session.commit()
+
+    def activate_next_player(self):
+        players = Player.query.filter_by(battle=self.battle, defeated=False).all()
+        prev_player_index = players.index(self.battle.active_player)
+        next_player = players[(prev_player_index + 1) % len(players)]
+        self.battle.active_player = next_player
+        db_session.commit()
+
+        self.shared_commands.append(Command('update-status', {
+            'color': self.battle.active_player.color,
+            'unitCount': self.battle.active_player.unit_count,
+            'unitLimit': self.battle.active_player.unit_limit,
+            'money': self.battle.active_player.money,
+        }))
+
+    def collect_gold(self):
+        buildings = self.battle.active_player.buildings.all()
+        earn = 0
+        for building in buildings:
+            proto = building_prototypes[building.type]
+            if 'earn' in proto:
+                earn += proto['earn']
+        self.battle.active_player.money += earn
+        db_session.commit()
+
+        self.shared_commands.append(Command('update-status', {
+            'money': self.battle.active_player.money,
+        }))
+
+    def heal_units(self):
+        neutral_buildings_q = self.battle.buildings.filter(Building.type.in_(('well', 'temple')))
+        buildings = self.battle.active_player.buildings.union_all(neutral_buildings_q).all()
+
+        injured_units = self.battle.active_player.units.filter(Unit.health < 100).all()
+        deltas = {}
+        for unit in injured_units:
+            b = [b for b in buildings if b.x == unit.x and b.y == unit.y]
+            building = b[0] if b else None
+            if building:
+                up = building_prototypes[building.type]['healthUp']
+                delta_hp = min(100 - unit.health, up)
+                deltas[unit.id] = delta_hp
+                unit.health += delta_hp
+        db_session.commit()
+
+        if [u for u in injured_units if u.id in deltas]:
+            self.shared_commands.append(Command('update-units', {
+                'units': [{
+                    'id': unit.id, 'changes': {
+                        'state': 'healing',
+                        'stateParams': {
+                            'deltaHp': deltas[unit.id],
+                        }
+                    }
+                } for unit in injured_units]
+            }))
+            self.shared_commands.append(Command('update-units', {
+                'units': [{
+                    'id': unit.id,
+                    'changes': {
+                        'health': unit.health,
+                        'state': 'waiting',
+                        'stateParams': {},
+                    }
+                } for unit in injured_units]
+            }))
 
 
 def get_units_to_buy(battle: Battle):

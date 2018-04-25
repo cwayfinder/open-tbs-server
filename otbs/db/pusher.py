@@ -1,3 +1,5 @@
+from typing import List
+
 from pusher import Pusher
 
 from otbs.db.models import Unit, Grave, Building
@@ -40,6 +42,12 @@ class Command:
                 'id': unit.id,
                 'changes': changes
             }
+        })
+
+    @staticmethod
+    def update_units(units: List[Unit], changes):
+        return Command('update-units', {
+            'units': [{'id': unit.id, 'changes': changes} for unit in units]
         })
 
     @staticmethod

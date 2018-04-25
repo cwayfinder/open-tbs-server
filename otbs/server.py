@@ -65,6 +65,15 @@ def buy_unit(battle_id):
     return jsonify(response_data)
 
 
+@app.route("/api/battle/<int:battle_id>/end-turn", methods=["POST"])
+def end_turn(battle_id):
+    Service(battle_id) \
+        .end_turn() \
+        .push()
+    response_data = {'status': 'ok'}
+    return jsonify(response_data)
+
+
 @app.route("/pusher/auth", methods=["POST"])
 def pusher_auth():
     socket_id = request.form['socket_id']
