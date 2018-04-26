@@ -1,3 +1,5 @@
+from typing import Dict
+
 from sqlalchemy import or_
 
 from otbs.db.models import Cell, Unit, Building, Player
@@ -6,7 +8,7 @@ from otbs.logic.path_finder import get_cell_resistance, get_available_path
 from otbs.logic.unit_master import prototypes
 
 
-def get_available_actions(unit):
+def get_available_actions(unit: Unit) -> Dict[Cell, str]:
     actions = {}
     actions.update({cell: 'move' for cell in get_unit_possible_moves(unit)})
 

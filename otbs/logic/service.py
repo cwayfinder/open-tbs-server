@@ -141,6 +141,7 @@ class Service:
                 'level': b.level,
                 'health': b.health,
                 'state': 'waiting',
+                'active': len(get_available_actions(b))
             } for b in units]
         }))
 
@@ -170,6 +171,9 @@ class Service:
             elif action == 'attack-unit':
                 unit = Unit.query.filter_by(battle_id=self.battle.id, x=x, y=y).one()
                 self.attack_unit(self.battle.selected_unit, unit)
+
+            self.sync_units_active()
+
             return self
 
         unit = Unit.query.filter_by(battle_id=self.battle.id, x=x, y=y, owner=self.battle.active_player).one_or_none()
@@ -188,6 +192,17 @@ class Service:
 
         self.clear_selected_unit()
         return self
+
+    def sync_units_active(self):
+        units = self.battle.active_player.units.all()
+        self.shared_commands.append(Command('update-units', {
+            'units': [{
+                'id': unit.id,
+                'changes': {
+                    'active': len(get_available_actions(unit))
+                }
+            } for unit in units]
+        }))
 
     def select_unit(self, unit):
         self.battle.selected_unit = unit
@@ -439,6 +454,15 @@ class Service:
             unit.did_occupy = False
             unit.did_attack = False
         db_session.commit()
+
+        self.shared_commands.append(Command('update-units', {
+            'units': [{
+                'id': unit.id,
+                'changes': {
+                    'active': True
+                }
+            } for unit in units]
+        }))
 
     def activate_next_player(self):
         players = Player.query.filter_by(battle=self.battle, defeated=False).all()
