@@ -290,6 +290,8 @@ class Service:
 
         self.sync_selected_unit()
 
+        self.check_players_defeat()
+
     def attack_unit(self, attacker: Unit, defender: Unit):
         self.shared_commands.append(Command.update_unit(attacker, {
             'state': 'attacking',
@@ -441,7 +443,19 @@ class Service:
         self.clear_selected_unit()
         self.reset_units()
         self.activate_next_player()
-        self.collect_gold()
+
+        income = self.collect_gold()
+        self.battle.active_player.money += income
+        db_session.commit()
+
+        self.shared_commands.append(Command('update-status', {
+            'color': self.battle.active_player.color,
+            'unitCount': self.battle.active_player.unit_count,
+            'unitLimit': self.battle.active_player.unit_limit,
+            'money': self.battle.active_player.money,
+            'income': income,
+        }))
+
         self.heal_units()
 
         return self
@@ -466,31 +480,21 @@ class Service:
 
     def activate_next_player(self):
         players = Player.query.filter_by(battle=self.battle, defeated=False).all()
-        prev_player_index = players.index(self.battle.active_player)
+        prev_player = next(p for p in players if p.id == self.battle.active_player.id)
+        prev_player_index = players.index(prev_player)
         next_player = players[(prev_player_index + 1) % len(players)]
         self.battle.active_player = next_player
         db_session.commit()
 
-        self.shared_commands.append(Command('update-status', {
-            'color': self.battle.active_player.color,
-            'unitCount': self.battle.active_player.unit_count,
-            'unitLimit': self.battle.active_player.unit_limit,
-            'money': self.battle.active_player.money,
-        }))
-
     def collect_gold(self):
         buildings = self.battle.active_player.buildings.all()
-        earn = 0
+        income = 0
         for building in buildings:
             proto = building_prototypes[building.type]
             if 'earn' in proto:
-                earn += proto['earn']
-        self.battle.active_player.money += earn
-        db_session.commit()
+                income += proto['earn']
 
-        self.shared_commands.append(Command('update-status', {
-            'money': self.battle.active_player.money,
-        }))
+        return income
 
     def heal_units(self):
         neutral_buildings_q = self.battle.buildings.filter(Building.type.in_(('well', 'temple')))
@@ -529,6 +533,26 @@ class Service:
                     }
                 } for unit in injured_units]
             }))
+
+    def check_players_defeat(self):
+        player = self.battle.active_player
+        has_no_commander = player.commander.unit is None
+        has_no_castle = player.buildings.filter_by(type='castle').one_or_none() is None
+        if has_no_commander and has_no_castle:
+            player.defeated = True
+            db_session.commit()
+
+            team_players = self.battle.players.filter_by(team=player.team, defeated=False).all()
+            if team_players:
+                for team_player in team_players:
+                    team_player.money += player.money // len(team_players)
+            else:
+                alive_players = self.battle.players.filter_by(defeated=False).all()
+                teams_left = len({p.team for p in alive_players})
+                if teams_left == 1:
+                    self.battle.winner_team = alive_players[0].team
+
+        db_session.commit()
 
 
 def get_units_to_buy(battle: Battle):
