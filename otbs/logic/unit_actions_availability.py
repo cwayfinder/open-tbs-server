@@ -26,7 +26,7 @@ def get_available_actions(unit: Unit) -> Dict[Cell, str]:
 
 
 def get_unit_possible_moves(unit):
-    if unit.did_move:
+    if unit.did_move or unit.did_attack or unit.did_occupy or unit.did_fix:
         return set()
 
     battle = unit.battle
@@ -46,6 +46,9 @@ def get_unit_possible_moves(unit):
 
 
 def can_fix_building(unit):
+    if unit.did_attack or unit.did_occupy:
+        return False
+
     can_fix = prototypes[unit.type].get('canFixBuilding', None)
 
     if can_fix:
@@ -61,6 +64,9 @@ def can_fix_building(unit):
 
 
 def can_occupy_building(unit):
+    if unit.did_attack or unit.did_fix:
+        return False
+
     can_occupy = prototypes[unit.type].get('canOccupyBuilding', None)
 
     if can_occupy:
@@ -79,6 +85,9 @@ def can_occupy_building(unit):
 
 
 def get_buildings_under_attack(unit):
+    if unit.did_attack or unit.did_occupy or unit.did_fix:
+        return set()
+
     can_destroy_building = prototypes[unit.type].get('canDestroyBuilding', False)
     can_act = not prototypes[unit.type].get('cannotActAfterMove', False)
     can_attack = can_destroy_building and can_act
@@ -94,7 +103,7 @@ def get_buildings_under_attack(unit):
 
 
 def get_units_under_attack(unit):
-    if unit.did_attack:
+    if unit.did_attack or unit.did_occupy or unit.did_fix:
         return set()
 
     units = unit.owner.enemy_units
