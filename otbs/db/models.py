@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, select, func, or_
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, select, func, or_, and_
 from sqlalchemy.orm import object_session, composite, relationship
 
 from otbs.db.db_constants import Base
@@ -67,7 +67,7 @@ class Player(Base):
         return object_session(self) \
             .query(Building) \
             .select_from(Player) \
-            .filter(Player.team != self.team) \
+            .filter(and_(Player.battle == self.battle, Player.team != self.team)) \
             .join(Building, Building.owner_id == Player.id) \
             .all()
 
@@ -76,6 +76,7 @@ class Player(Base):
         return object_session(self) \
             .query(Unit) \
             .outerjoin(Player, Unit.owner_id == Player.id) \
+            .filter(Player.battle == self.battle) \
             .filter(or_(Unit.owner_id == None, Player.team != self.team)) \
             .all()
 
@@ -84,6 +85,7 @@ class Player(Base):
         return object_session(self) \
             .query(Unit) \
             .select_from(Player) \
+            .filter(Player.battle == self.battle) \
             .filter(Player.team == self.team) \
             .join(Unit, Unit.owner_id == Player.id) \
             .all()

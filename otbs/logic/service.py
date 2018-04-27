@@ -112,6 +112,7 @@ class Service:
             'unitCount': self.battle.active_player.unit_count,
             'unitLimit': self.battle.active_player.unit_limit,
             'money': self.battle.active_player.money,
+            'winnerTeam': self.battle.winner_team,
         }))
 
         self.commands.append(Command('add-buildings', {
@@ -280,6 +281,7 @@ class Service:
     def occupy_building(self, unit):
         building = Building.query.filter_by(battle=unit.battle, x=unit.x, y=unit.y).one()
 
+        prev_owner = building.owner
         building.owner = unit.owner
         unit.did_occupy = True
         db_session.commit()
@@ -290,9 +292,12 @@ class Service:
 
         self.sync_selected_unit()
 
-        self.check_players_defeat()
+        if prev_owner:
+            self.check_players_defeat(prev_owner)
 
     def attack_unit(self, attacker: Unit, defender: Unit):
+        defending_player = defender.owner
+
         self.shared_commands.append(Command.update_unit(attacker, {
             'state': 'attacking',
             'stateParams': {
@@ -323,6 +328,9 @@ class Service:
             self.sync_selected_unit()
         else:
             self.clear_selected_unit()
+
+        if health == 0:
+            self.check_players_defeat(defending_player)
 
     def decrease_unit_hp(self, unit, delta_hp):
         health = max(unit.health - delta_hp, 0)
@@ -534,10 +542,9 @@ class Service:
                 } for unit in injured_units]
             }))
 
-    def check_players_defeat(self):
-        player = self.battle.active_player
+    def check_players_defeat(self, player: Player):
         has_no_commander = player.commander.unit is None
-        has_no_castle = player.buildings.filter_by(type='castle').one_or_none() is None
+        has_no_castle = len(player.buildings.filter_by(type='castle').all()) == 0
         if has_no_commander and has_no_castle:
             player.defeated = True
             db_session.commit()
@@ -551,6 +558,10 @@ class Service:
                 teams_left = len({p.team for p in alive_players})
                 if teams_left == 1:
                     self.battle.winner_team = alive_players[0].team
+
+                    self.shared_commands.append(Command('update-status', {
+                        'winnerTeam': self.battle.winner_team,
+                    }))
 
         db_session.commit()
 
