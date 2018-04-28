@@ -49,7 +49,7 @@ def handle_click(battle_id):
     data = json.loads(request.data)
     commands = Service(battle_id) \
         .handle_click_on_cell(data['x'], data['y']) \
-        .push() \
+        .push(request.headers['x-socket-id']) \
         .get_commands()
     response_data = {'status': 'ok', 'commands': commands}
     return jsonify(response_data)
@@ -58,19 +58,21 @@ def handle_click(battle_id):
 @app.route("/api/battle/<int:battle_id>/buy-unit", methods=["POST"])
 def buy_unit(battle_id):
     data = json.loads(request.data)
-    Service(battle_id) \
+    commands = Service(battle_id) \
         .buy_unit(data['type'], Cell(data['x'], data['y'])) \
-        .push()
-    response_data = {'status': 'ok'}
+        .push(request.headers['x-socket-id']) \
+        .get_commands()
+    response_data = {'status': 'ok', 'commands': commands}
     return jsonify(response_data)
 
 
 @app.route("/api/battle/<int:battle_id>/end-turn", methods=["POST"])
 def end_turn(battle_id):
-    Service(battle_id) \
+    commands = Service(battle_id) \
         .end_turn() \
-        .push()
-    response_data = {'status': 'ok'}
+        .push(request.headers['x-socket-id']) \
+        .get_commands()
+    response_data = {'status': 'ok', 'commands': commands}
     return jsonify(response_data)
 
 
