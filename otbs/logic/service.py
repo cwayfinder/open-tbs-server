@@ -22,13 +22,12 @@ class Service:
         self.commands = []
         self.shared_commands = []
 
-    def push(self):
+    def push(self, socket_id):
         for command in self.shared_commands:
             channel = 'battle-{0}'.format(self.battle.id)
-            pusher.trigger([channel], 'server-command', {
-                'type': command.type_,
-                'payload': command.payload
-            })
+            data = {'type': command.type_, 'payload': command.payload}
+
+            pusher.trigger([channel], 'server-command', data, socket_id)
 
         return self
 
@@ -149,7 +148,8 @@ class Service:
         return self
 
     def get_commands(self):
-        return [c.to_dict() for c in self.commands]
+        commands = self.commands + self.shared_commands
+        return [c.to_dict() for c in commands]
 
     def handle_click_on_cell(self, x: int, y: int):
         cell = Cell(x, y)

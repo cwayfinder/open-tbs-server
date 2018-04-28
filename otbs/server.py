@@ -49,7 +49,7 @@ def handle_click(battle_id):
     data = json.loads(request.data)
     commands = Service(battle_id) \
         .handle_click_on_cell(data['x'], data['y']) \
-        .push() \
+        .push(request.headers['x-socket-id']) \
         .get_commands()
     response_data = {'status': 'ok', 'commands': commands}
     return jsonify(response_data)
@@ -60,7 +60,7 @@ def buy_unit(battle_id):
     data = json.loads(request.data)
     Service(battle_id) \
         .buy_unit(data['type'], Cell(data['x'], data['y'])) \
-        .push()
+        .push(request.headers['x-socket-id'])
     response_data = {'status': 'ok'}
     return jsonify(response_data)
 
@@ -69,7 +69,7 @@ def buy_unit(battle_id):
 def end_turn(battle_id):
     Service(battle_id) \
         .end_turn() \
-        .push()
+        .push(request.headers['x-socket-id'])
     response_data = {'status': 'ok'}
     return jsonify(response_data)
 
