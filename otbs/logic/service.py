@@ -49,7 +49,16 @@ class Service:
 
         units = {}
         for u in battle_map['units'].values():
-            unit = Unit(type=u['type'], x=u['x'], y=u['y'], xp=0, level=0, health=100)
+            unit = Unit(type=u['type'],
+                        x=u['x'],
+                        y=u['y'],
+                        xp=0,
+                        level=0,
+                        health=100,
+                        did_move=False,
+                        did_attack=False,
+                        did_fix=False,
+                        did_occupy=False)
             if 'ownerId' in u:
                 unit.owner_id = u['ownerId']
             units[u['id']] = unit
@@ -145,6 +154,8 @@ class Service:
             } for b in units]
         }))
 
+        self.sync_selected_unit()
+
         return self
 
     def get_commands(self):
@@ -213,21 +224,24 @@ class Service:
 
     def sync_selected_unit(self):
         unit = self.battle.selected_unit
-        actions = get_available_actions(unit)
-        action_list = [{'x': cell.x, 'y': cell.y, 'type': action_type} for cell, action_type in actions.items()]
+        if unit:
+            actions = get_available_actions(unit)
+            action_list = [{'x': cell.x, 'y': cell.y, 'type': action_type} for cell, action_type in actions.items()]
 
-        self.shared_commands.append(Command('update-selected-unit', {
-            'actions': action_list,
-            'briefInfo': {
-                'atkMin': prototypes[unit.type]['atk']['min'],
-                'atkMax': prototypes[unit.type]['atk']['max'],
-                'def': prototypes[unit.type]['def'],
-                'extraDef': get_cell_defence_bonus(unit),
-                'level': unit.level,
-            },
-            'x': unit.x,
-            'y': unit.y,
-        }))
+            self.shared_commands.append(Command('update-selected-unit', {
+                'actions': action_list,
+                'briefInfo': {
+                    'atkMin': prototypes[unit.type]['atk']['min'],
+                    'atkMax': prototypes[unit.type]['atk']['max'],
+                    'def': prototypes[unit.type]['def'],
+                    'extraDef': get_cell_defence_bonus(unit),
+                    'level': unit.level,
+                },
+                'x': unit.x,
+                'y': unit.y,
+            }))
+        else:
+            self.shared_commands.append(Command('clear-selected-unit', {}))
 
     def clear_selected_unit_actions(self):
         self.shared_commands.append(Command('update-selected-unit', {
