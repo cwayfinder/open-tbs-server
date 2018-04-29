@@ -1,18 +1,28 @@
 import json
 import uuid
 
+from firebase_admin import auth
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from sqlalchemy.exc import SQLAlchemyError
 
+from otbs.auth import AuthError, requires_auth, get_token_sub
 from otbs.db.database import init_db
 from otbs.db.db_constants import db_session
+from otbs.db.firestore import init_firebase
 from otbs.db.models import Cell
 from otbs.db.pusher import pusher
 from otbs.logic.service import Service
 
 app = Flask(__name__)
 CORS(app)
+
+
+@app.errorhandler(AuthError)
+def handle_auth_error(ex):
+    response = jsonify(ex.error)
+    response.status_code = ex.status_code
+    return response
 
 
 @app.teardown_appcontext
@@ -26,6 +36,7 @@ def home():
 
 
 @app.route("/api/battle/start", methods=["POST"])
+@requires_auth
 def start_battle():
     data = json.loads(request.data)
     Service.start_battle(data['map'], data['preferences'])
@@ -33,6 +44,7 @@ def start_battle():
 
 
 @app.route("/api/battle/<int:battle_id>", methods=["GET"])
+@requires_auth
 def get_battle(battle_id):
     try:
         commands = Service(battle_id).collect_battle_data().get_commands()
@@ -87,6 +99,13 @@ def pusher_auth():
     return jsonify(auth)
 
 
+@app.route("/firebase/auth", methods=["GET"])
+def firebase_auth():
+    custom_token = auth.create_custom_token(get_token_sub())
+    return jsonify({'firebaseToken': custom_token.decode('utf-8')})
+
+
 if __name__ == '__main__':
+    init_firebase()
     init_db()
     app.run()

@@ -2,3 +2,6 @@ Flask
 flask_cors
 SQLAlchemy
 firebase-admin
+python-dotenv
+python-jose-cryptodome
+six
