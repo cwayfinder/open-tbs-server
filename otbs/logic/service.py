@@ -64,9 +64,9 @@ class Service:
             units[u['id']] = unit
 
         players = {}
-        for player_id, map_data in battle_map['players'].items():
-            pref = preferences['players'][player_id]
-            commander_unit = units[map_data['commander']['unitId']]
+        for p in battle_map['players']:
+            pref = next(pref for pref in preferences['players'] if pref['id'] == p['id'])
+            commander_unit = units[p['commander']['unitId']]
             commander_unit.type = pref['commanderCharacter']
             commander = Commander(character=pref['commanderCharacter'], death_count=0, xp=0, level=0,
                                   unit=commander_unit)
@@ -77,7 +77,7 @@ class Service:
                             type=pref['type'],
                             commander=commander,
                             defeated=False)
-            players[map_data['id']] = player
+            players[p['id']] = player
 
         for b in battle_map['buildings'].values():
             if 'ownerId' in b:
@@ -90,10 +90,9 @@ class Service:
         db_session.add_all(players.values())
         db_session.add_all(units.values())
 
-        first_player_id = next(iter(dict.values(battle_map['players'])))['id']
-        first_player = players[first_player_id]
-        battle = Battle(map_width=battle_map['size']['width'],
-                        map_height=battle_map['size']['height'],
+        first_player = next(iter(dict.values(players)))
+        battle = Battle(map_width=battle_map['width'],
+                        map_height=battle_map['height'],
                         turn_count=0,
                         circle_count=0,
                         active_player=first_player,
