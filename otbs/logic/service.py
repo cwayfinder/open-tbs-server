@@ -17,8 +17,9 @@ class Service:
     commands: List[Command]
     shared_commands: List[Command]
 
-    def __init__(self, battle_id: int):
-        self.battle = Battle.query.filter_by(id=battle_id).one()
+    def __init__(self, battle_id=None):
+        if battle_id:
+            self.battle = Battle.query.filter_by(id=battle_id).one()
         self.commands = []
         self.shared_commands = []
 
@@ -31,8 +32,7 @@ class Service:
 
         return self
 
-    @staticmethod
-    def start_battle(battle_map, preferences):
+    def start_battle(self, battle_map, preferences):
         terrain = []
         for cell, terrain_type in battle_map['terrain'].items():
             [x, y] = cell.split(',')
@@ -40,7 +40,7 @@ class Service:
         db_session.add_all(terrain)
 
         buildings = {}
-        for b in battle_map['buildings'].values():
+        for b in battle_map['buildings']:
             building = Building(type=b['type'], x=b['x'], y=b['y'], state=b['state'])
             if 'ownerId' in b:
                 building.owner_id = b['ownerId']
@@ -48,7 +48,7 @@ class Service:
         db_session.add_all(buildings.values())
 
         units = {}
-        for u in battle_map['units'].values():
+        for u in battle_map['units']:
             unit = Unit(type=u['type'],
                         x=u['x'],
                         y=u['y'],
@@ -66,24 +66,27 @@ class Service:
         players = {}
         for p in battle_map['players']:
             pref = next(pref for pref in preferences['players'] if pref['id'] == p['id'])
-            commander_unit = units[p['commander']['unitId']]
-            commander_unit.type = pref['commanderCharacter']
-            commander = Commander(character=pref['commanderCharacter'], death_count=0, xp=0, level=0,
-                                  unit=commander_unit)
+            commander_unit_id = p['commander']['unitId']
+            if commander_unit_id:
+                commander_unit = units[commander_unit_id]
+                commander_unit.type = pref['commander']
+            else:
+                commander_unit = None
+            commander = Commander(character=pref['commander'], death_count=0, xp=0, level=0, unit=commander_unit)
             player = Player(color=pref['color'],
                             team=pref['team'],
-                            money=preferences['money'],
-                            unit_limit=preferences['unitLimit'],
+                            money=pref['money'],
+                            unit_limit=pref['unitLimit'],
                             type=pref['type'],
                             commander=commander,
                             defeated=False)
             players[p['id']] = player
 
-        for b in battle_map['buildings'].values():
+        for b in battle_map['buildings']:
             if 'ownerId' in b:
                 buildings[b['id']].owner = players[b['ownerId']]
 
-        for u in battle_map['units'].values():
+        for u in battle_map['units']:
             if 'ownerId' in u:
                 units[u['id']].owner = players[u['ownerId']]
 
@@ -103,6 +106,12 @@ class Service:
 
         db_session.add(battle)
         db_session.commit()
+
+        self.shared_commands.append(Command('start-battle', {
+            'id': battle.id
+        }))
+
+        return self
 
     def collect_battle_data(self):
         buildings = self.battle.buildings.outerjoin(Building.owner)

@@ -39,8 +39,10 @@ def home():
 @requires_auth
 def start_battle():
     data = json.loads(request.data)
-    Service.start_battle(data['map'], data['preferences'])
-    return jsonify({'status': 'ok'})
+    commands = Service() \
+        .start_battle(data['map'], data['preferences']) \
+        .get_commands()
+    return jsonify({'status': 'ok', 'commands': commands})
 
 
 @app.route("/api/battle/<int:battle_id>", methods=["GET"])

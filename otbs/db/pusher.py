@@ -3,6 +3,7 @@ from typing import List
 from pusher import Pusher
 
 from otbs.db.models import Unit, Grave, Building
+from otbs.logic.unit_actions_availability import get_available_actions
 
 pusher = Pusher(
     app_id='511959',
@@ -32,6 +33,7 @@ class Command:
                 'level': unit.level,
                 'health': unit.health,
                 'state': 'waiting',
+                'active': len(get_available_actions(unit))
             }
         })
 

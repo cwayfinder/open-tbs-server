@@ -46,7 +46,7 @@ def get_unit_possible_moves(unit):
 
 
 def can_fix_building(unit):
-    if unit.did_attack or unit.did_occupy:
+    if unit.did_attack or unit.did_fix or unit.did_occupy:
         return False
 
     can_fix = prototypes[unit.type].get('canFixBuilding', None)
@@ -64,7 +64,7 @@ def can_fix_building(unit):
 
 
 def can_occupy_building(unit):
-    if unit.did_attack or unit.did_fix:
+    if unit.did_attack or unit.did_fix or unit.did_occupy:
         return False
 
     can_occupy = prototypes[unit.type].get('canOccupyBuilding', None)
