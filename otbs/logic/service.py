@@ -456,6 +456,10 @@ class Service:
         unit = Unit(type=unit_type, x=store_cell.x, y=store_cell.y, xp=0, level=0, health=100,
                     owner=player, battle=self.battle)
         db_session.add(unit)
+
+        if unit_type in commanderList:
+            player.commander.unit = unit
+
         player.money -= get_unit_cost(unit.type, player)
         db_session.commit()
 
