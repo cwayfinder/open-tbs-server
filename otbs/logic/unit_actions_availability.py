@@ -125,7 +125,7 @@ def get_cells_under_attack(unit):
         max_range = range_['max']
 
     cells = get_available_path(Cell(unit.x, unit.y), max_range, max_x, max_y)
-    cells = {cell for cell in cells if abs(cell.x - unit.x) >= min_range or abs(cell.y - unit.y) >= min_range}
+    cells = {cell for cell in cells if (abs(cell.x - unit.x) + abs(cell.y - unit.y)) >= min_range}
     return cells
 
 
