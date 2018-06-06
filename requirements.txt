@@ -25,6 +25,7 @@ google-cloud-storage==1.8.0  # via firebase-admin
 google-resumable-media==0.3.1  # via google-cloud-storage
 googleapis-common-protos==1.5.3  # via google-api-core
 grpcio==1.10.1            # via google-api-core
+gunicorn==19.8.1
 idna==2.6                 # via cryptography, requests
 itsdangerous==0.24        # via flask
 jinja2==2.10              # via flask

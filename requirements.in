@@ -7,3 +7,4 @@ python-jose-cryptodome
 six
 pusher
 psycopg2
+gunicorn

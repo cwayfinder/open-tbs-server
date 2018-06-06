@@ -14,6 +14,7 @@ from otbs.db.models import Cell
 from otbs.db.pusher import pusher
 from otbs.logic.service import Service
 
+
 app = Flask(__name__)
 CORS(app)
 
@@ -23,6 +24,13 @@ def handle_auth_error(ex):
     response = jsonify(ex.error)
     response.status_code = ex.status_code
     return response
+
+
+@app.before_first_request
+def init_app(exception=None):
+    print('Initializing database ...')
+    init_firebase()
+    init_db()
 
 
 @app.teardown_appcontext
@@ -108,6 +116,5 @@ def firebase_auth():
 
 
 if __name__ == '__main__':
-    init_firebase()
-    init_db()
-    app.run()
+    print('start +++++++++++++')
+    app.run(debug=True)

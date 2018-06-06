@@ -7,5 +7,5 @@ def init_db():
     # you will have to import them first before calling init_db()
     from otbs.db.models import Battle
 
-    Base.metadata.drop_all(bind=engine)
+    # Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
